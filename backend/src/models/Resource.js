@@ -1,0 +1,31 @@
+import mongoose from 'mongoose'
+
+const { Schema } = mongoose
+const resourceSchema = new Schema({
+  universityId: { type: String, required: true, index: true },
+  title: { type: String, required: true, trim: true, maxlength: 180 },
+  slug: { type: String, required: true, trim: true, lowercase: true },
+  description: { type: String, trim: true, maxlength: 3000, default: '' },
+  resourceType: { type: String, enum: ['NOTES', 'PYQ', 'ASSIGNMENT', 'LAB_MATERIAL', 'REFERENCE', 'SYLLABUS', 'OTHER'], required: true },
+  examType: { type: String, enum: ['MID_TERM', 'END_TERM', 'NONE'], default: 'NONE' },
+  academicYear: { type: Number, min: 2000, max: 2200 },
+  programId: { type: Schema.Types.ObjectId, ref: 'Program', required: true },
+  branchId: { type: Schema.Types.ObjectId, ref: 'Branch' },
+  semesterId: { type: Schema.Types.ObjectId, ref: 'Semester', required: true },
+  subjectId: { type: Schema.Types.ObjectId, ref: 'Subject', required: true },
+  contributorId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  file: { url: { type: String, required: true }, storageKey: { type: String, required: true }, fileName: { type: String, required: true }, mimeType: { type: String, enum: ['application/pdf'], required: true }, sizeBytes: { type: Number, required: true, min: 1 }, sha256: { type: String, required: true, index: true } },
+  status: { type: String, enum: ['PENDING_REVIEW', 'APPROVED', 'REJECTED', 'CHANGES_REQUESTED'], default: 'PENDING_REVIEW', index: true },
+  verified: { type: Boolean, default: false },
+  rejectionReason: { type: String, default: '' },
+  requestedChanges: { type: String, default: '' },
+  downloadCount: { type: Number, default: 0, min: 0 },
+  reviewedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+  reviewedAt: { type: Date },
+}, { timestamps: true, versionKey: false })
+
+resourceSchema.index({ universityId: 1, slug: 1 })
+resourceSchema.index({ universityId: 1, status: 1, createdAt: -1 })
+resourceSchema.index({ universityId: 1, title: 'text', description: 'text' })
+resourceSchema.index({ universityId: 1, 'file.sha256': 1 }, { unique: true })
+export const Resource = mongoose.model('Resource', resourceSchema)

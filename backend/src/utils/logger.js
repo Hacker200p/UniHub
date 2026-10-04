@@ -1,0 +1,2 @@
+function write(level, event, metadata = {}) { const safe = { event, ...metadata }; delete safe.password; delete safe.token; delete safe.authorization; delete safe.refreshToken; console[level](JSON.stringify({ level, timestamp: new Date().toISOString(), ...safe })) }
+export const logger = { info: (event, metadata) => write('log', event, metadata), warn: (event, metadata) => write('warn', event, metadata), error: (event, metadata) => write('error', event, metadata) }
