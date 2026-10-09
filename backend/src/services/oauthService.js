@@ -169,18 +169,23 @@ export async function exchangeCodeForIdentity(provider, code, codeVerifier) {
     }
 
     case 'github': {
+      const tokenBody = {
+        client_id: env.GITHUB_CLIENT_ID,
+        client_secret: env.GITHUB_CLIENT_SECRET,
+        code,
+        redirect_uri: env.GITHUB_CALLBACK_URL,
+      }
+      if (codeVerifier) {
+        tokenBody.code_verifier = codeVerifier
+      }
+
       const tokenRes = await fetch('https://github.com/login/oauth/access_token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
         },
-        body: JSON.stringify({
-          client_id: env.GITHUB_CLIENT_ID,
-          client_secret: env.GITHUB_CLIENT_SECRET,
-          code,
-          redirect_uri: env.GITHUB_CALLBACK_URL,
-        }),
+        body: JSON.stringify(tokenBody),
       })
 
       const tokenData = await tokenRes.json()

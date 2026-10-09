@@ -169,6 +169,19 @@ export default function SettingsPage({ activeTab = 'profile', onNavigate }) {
     if (currentTab === 'notifications') loadNotifications()
   }, [currentTab, loadSecurity, loadSessions, loadNotifications])
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const successMsg = params.get('success')
+    const errorMsg = params.get('error')
+    if (successMsg) {
+      setSecurityStatus({ success: decodeURIComponent(successMsg), error: '', loading: false })
+      window.history.replaceState({}, document.title, window.location.pathname)
+    } else if (errorMsg) {
+      setSecurityStatus({ success: '', error: decodeURIComponent(errorMsg), loading: false })
+      window.history.replaceState({}, document.title, window.location.pathname)
+    }
+  }, [])
+
   if (!user) {
     return (
       <main className="directory-page">
@@ -224,9 +237,19 @@ export default function SettingsPage({ activeTab = 'profile', onNavigate }) {
     }
   }
 
-  const handleConnectProvider = (provider) => {
-    // Initiate account connection
-    window.location.href = `${API_URL}/auth/${provider}?intent=connect`
+  const handleConnectProvider = async (provider) => {
+    try {
+      setSecurityStatus({ success: '', error: '', loading: true })
+      const res = await api.getOAuthUrl(provider, 'link', accessToken)
+      const targetUrl = res?.data?.url || res?.url
+      if (targetUrl) {
+        window.location.href = targetUrl
+      } else {
+        window.location.href = `${API_URL}/auth/${provider}?intent=link&token=${encodeURIComponent(accessToken)}`
+      }
+    } catch {
+      window.location.href = `${API_URL}/auth/${provider}?intent=link&token=${encodeURIComponent(accessToken)}`
+    }
   }
 
   const handleUnlinkProvider = async (provider) => {

@@ -410,20 +410,41 @@ export async function getProviders(req, res) {
 
 export async function initiateOAuth(req, res) {
   const { provider } = req.params
-  const intent = req.query.intent === 'link' ? 'link' : 'login'
+  const intent = req.query.intent === 'link' || req.query.intent === 'connect' ? 'link' : 'login'
   let userId = null
 
   if (intent === 'link') {
-    // If linking, user must pass valid auth token
+    // If linking, user must pass valid auth token or have active session
     const authHeader = req.headers.authorization
-    if (authHeader?.startsWith('Bearer ')) {
+    const tokenQuery = req.query.token
+    const rawToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : (tokenQuery || '')
+
+    if (rawToken) {
       try {
-        const decoded = jwt.verify(authHeader.slice(7), env.JWT_SECRET)
+        const decoded = jwt.verify(rawToken, env.JWT_SECRET)
         userId = decoded.sub
       } catch {
-        throw new HttpError(401, 'Authentication required to link social provider')
+        // Fall back to refresh cookie
       }
-    } else {
+    }
+
+    if (!userId) {
+      const token = getRefreshCookie(req)
+      if (token) {
+        const incomingHash = hashToken(token)
+        const session = await RefreshSession.findOne({
+          universityId: env.UNIVERSITY_ID,
+          tokenHash: incomingHash,
+          revokedAt: null,
+          expiresAt: { $gt: new Date() },
+        })
+        if (session) {
+          userId = String(session.userId)
+        }
+      }
+    }
+
+    if (!userId) {
       throw new HttpError(401, 'Authentication required to link social provider')
     }
   }
@@ -463,7 +484,7 @@ export async function handleOAuthCallback(req, res) {
 
     if (env.AUTH_REQUIRE_UNIVERSITY_EMAIL && !validateUniversityDomain(identity.email)) {
       return res.redirect(
-        `${env.CLIENT_URL}/login?error=${encodeURIComponent('Your email domain is not authorized for this platform.')}`,
+        `${env.CLIENT_URL}/login?error=domain_not_allowed&message=${encodeURIComponent('Registration is restricted to authorized university email domains.')}`,
       )
     }
 
@@ -538,26 +559,75 @@ export async function handleOAuthCallback(req, res) {
     }
 
     // Standard Login / Registration Intent
+    //
+    // Step 1: Look up by the stable provider identity (provider + providerUserId).
+    // This is the primary key for returning OAuth users and handles the vast majority
+    // of returning logins without touching email at all.
     let user = await User.findOne({
       universityId: env.UNIVERSITY_ID,
       'authProviders.provider': provider,
       'authProviders.providerUserId': identity.providerUserId,
     })
 
-    if (!user) {
-      // Check if user with that email already exists
+    if (user) {
+      // Returning provider-linked user: refresh provider metadata (avatar, emailVerified)
+      // so the profile stays up to date without altering any security-sensitive fields.
+      const providerEntry = user.authProviders.find(
+        (p) => p.provider === provider && p.providerUserId === identity.providerUserId,
+      )
+      if (providerEntry) {
+        let dirty = false
+        if (identity.avatarUrl && providerEntry.avatarUrl !== identity.avatarUrl) {
+          providerEntry.avatarUrl = identity.avatarUrl
+          dirty = true
+        }
+        if (identity.emailVerified !== providerEntry.emailVerified) {
+          providerEntry.emailVerified = identity.emailVerified
+          dirty = true
+        }
+        // Refresh top-level avatar if the user has none
+        if (!user.avatarUrl && identity.avatarUrl) {
+          user.avatarUrl = identity.avatarUrl
+          dirty = true
+        }
+        if (dirty) await user.save()
+      }
+    } else {
+      // Step 2: No existing provider identity found.
+      // Check whether another account shares the same email address.
       const emailUser = identity.email
         ? await User.findOne({ universityId: env.UNIVERSITY_ID, email: identity.email })
         : null
 
       if (emailUser) {
-        // Safe account merging principle: require user to log in and link from settings
+        // Safe account-merging policy: do NOT auto-link accounts based solely on a
+        // matching email address. The user must authenticate to their existing account
+        // and then link the provider from Settings > Connected Accounts.
+        // This prevents account-takeover via a compromised provider that supplies a
+        // matching email for a victim's account.
+        logger.info('OAuth email conflict — existing account requires manual linking', {
+          provider,
+          existingAccountId: emailUser._id?.toString(),
+        })
+        const providerName = provider.charAt(0).toUpperCase() + provider.slice(1)
         return res.redirect(
-          `${env.CLIENT_URL}/login?error=${encodeURIComponent('An account with this email already exists. Please log in with your existing password and connect this provider under Settings > Connected Accounts.')}&email=${encodeURIComponent(identity.email)}`,
+          `${env.CLIENT_URL}/login?error=account_exists_link_required&email=${encodeURIComponent(identity.email)}&provider=${encodeURIComponent(provider)}&message=${encodeURIComponent(
+            `An account already exists with this email address. Please sign in with your existing password, then go to Settings \u203a Connected Accounts to link ${providerName}.`,
+          )}`,
         )
       }
 
-      // Register new user with strict STUDENT role
+      // Step 3: Completely new user — register with role STUDENT.
+      // Require a verified email from the provider (or at least a stable providerUserId
+      // fallback for providers that may not surface emails, e.g. GitHub private email).
+      if (!identity.email && !identity.providerUserId) {
+        return res.redirect(
+          `${env.CLIENT_URL}/login?error=${encodeURIComponent(
+            'Your ' + provider + ' account did not provide a usable email address. Please make your primary email public in your ' + provider + ' settings and try again.',
+          )}`,
+        )
+      }
+
       const defaultProgram = await Program.findOne({
         universityId: env.UNIVERSITY_ID,
         isActive: true,
@@ -566,7 +636,9 @@ export async function handleOAuthCallback(req, res) {
       user = await User.create({
         universityId: env.UNIVERSITY_ID,
         name: identity.name || `${provider} Student`,
-        email: identity.email || `${provider}_${identity.providerUserId}@university.local`,
+        // Prefer the provider's verified email; fall back to a placeholder so the unique
+        // index on (universityId, email) is always satisfied.
+        email: identity.email || `${provider}_${identity.providerUserId}@noemail.local`,
         role: 'STUDENT',
         programId: defaultProgram?._id,
         avatarUrl: identity.avatarUrl || '',
@@ -575,7 +647,7 @@ export async function handleOAuthCallback(req, res) {
           {
             provider,
             providerUserId: identity.providerUserId,
-            email: identity.email,
+            email: identity.email || '',
             emailVerified: identity.emailVerified,
             avatarUrl: identity.avatarUrl || '',
             linkedAt: new Date(),

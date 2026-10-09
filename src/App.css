@@ -10,6 +10,7 @@ body { background: var(--cream); color: var(--ink); font-family: var(--sans); }
 .app-shell { max-width: 1280px; margin: auto; overflow: hidden; background: var(--cream); }
 .site-header { height: 88px; padding: 0 6.5%; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--line); }
 .brand { border: 0; background: none; display: flex; gap: 10px; align-items: center; color: var(--ink); font: 12px/1.05 var(--mono); text-align: left; letter-spacing: .5px; }
+.brand-logo { width: 32px; height: 32px; object-fit: contain; }
 .brand strong { font: 600 15px var(--sans); letter-spacing: -.4px; }.brand-mark { width: 31px; height: 31px; border-radius: 50%; display: inline-grid; place-items: center; background: var(--ink); color: var(--cream); font: 10px var(--mono); }
 .site-header nav { display: flex; align-items: center; gap: 30px; } .site-header nav button, .section-link, .back-link { border: 0; background: none; color: var(--muted); font: 12px var(--mono); } .site-header nav button:hover, .section-link:hover, .back-link:hover { color: var(--orange); }.nav-cta { border: 1px solid var(--ink); padding: 13px 17px; color: var(--ink); }
 .theme-toggle { width: 30px; height: 30px; padding: 0; border: 1px solid var(--line); color: var(--ink); }

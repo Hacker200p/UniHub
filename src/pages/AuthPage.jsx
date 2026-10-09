@@ -74,13 +74,20 @@ export default function AuthPage({ mode = 'login', onNavigate }) {
     const messageParam = params.get('message')
 
     if (errorParam === 'account_exists_link_required') {
+      const providerParam = params.get('provider')
+      const providerName = providerParam ? (providerParam.charAt(0).toUpperCase() + providerParam.slice(1)) : 'this provider'
       setError(
-        `An account with ${emailParam || 'this email'} already exists. Please sign in below to connect your account.`
+        messageParam || `An account with ${emailParam || 'this email'} already exists. Please sign in below to connect ${providerName} under Settings › Connected Accounts.`
       )
+      if (emailParam) {
+        setForm((prev) => ({ ...prev, email: emailParam }))
+      }
     } else if (errorParam === 'domain_not_allowed') {
       setError(messageParam || 'Registration requires an authorized university email domain.')
+    } else if (errorParam === 'oauth_cancelled' || errorParam === 'access_denied') {
+      setError('Social sign-in was cancelled. Please try again.')
     } else if (errorParam) {
-      setError(messageParam || 'Authentication failed. Please try again.')
+      setError(messageParam || (errorParam !== 'true' ? errorParam : 'Authentication failed. Please try again.'))
     }
 
     // Fetch enabled OAuth providers
