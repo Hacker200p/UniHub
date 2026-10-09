@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { AuthContext } from './authContext.js'
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api'
 
@@ -36,21 +36,21 @@ export function AuthProvider({ children }) {
     }
   }, [session])
 
-  const login = async (credentials) => {
+  const login = useCallback(async (credentials) => {
     const next = await authRequest('/auth/login', credentials)
     const cleanSession = { user: next.user, accessToken: next.accessToken }
     setSession(cleanSession)
     return cleanSession
-  }
+  }, [])
 
-  const register = async (details) => {
+  const register = useCallback(async (details) => {
     const next = await authRequest('/auth/register', details)
     const cleanSession = { user: next.user, accessToken: next.accessToken }
     setSession(cleanSession)
     return cleanSession
-  }
+  }, [])
 
-  const refreshSession = async () => {
+  const refreshSession = useCallback(async () => {
     try {
       const response = await fetch(`${API_URL}/auth/refresh`, {
         method: 'POST',
@@ -68,9 +68,9 @@ export function AuthProvider({ children }) {
       setSession(null)
       throw err
     }
-  }
+  }, [])
 
-  const updateProfile = async (details) => {
+  const updateProfile = useCallback(async (details) => {
     const response = await fetch(`${API_URL}/user/profile`, {
       method: 'PATCH',
       credentials: 'include',
@@ -85,9 +85,9 @@ export function AuthProvider({ children }) {
     const next = { ...session, user: payload.data.user }
     setSession(next)
     return next.user
-  }
+  }, [session])
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await fetch(`${API_URL}/auth/logout`, {
         method: 'POST',
@@ -97,9 +97,9 @@ export function AuthProvider({ children }) {
       // best effort
     }
     setSession(null)
-  }
+  }, [])
 
-  const logoutAll = async () => {
+  const logoutAll = useCallback(async () => {
     try {
       if (session?.accessToken) {
         await fetch(`${API_URL}/auth/logout-all`, {
@@ -114,13 +114,13 @@ export function AuthProvider({ children }) {
       // best effort
     }
     setSession(null)
-  }
+  }, [session?.accessToken])
 
-  const setAuthSession = (nextSession) => {
+  const setAuthSession = useCallback((nextSession) => {
     const cleanSession = nextSession ? { user: nextSession.user, accessToken: nextSession.accessToken } : null
     setSession(cleanSession)
     return cleanSession
-  }
+  }, [])
 
   return (
     <AuthContext.Provider

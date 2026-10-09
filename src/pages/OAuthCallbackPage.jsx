@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../context/useAuth.js'
 import { api } from '../services/api.js'
 
@@ -6,6 +6,7 @@ export default function OAuthCallbackPage({ onNavigate }) {
   const { setAuthSession, isAuthenticated } = useAuth()
   const [status, setStatus] = useState('processing')
   const [errorMessage, setErrorMessage] = useState('')
+  const executedRef = useRef(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -32,6 +33,10 @@ export default function OAuthCallbackPage({ onNavigate }) {
         setErrorMessage(
           'Your social account does not have a verified email address attached. Please verify your email with the provider.'
         )
+      } else if (errorParam === 'too_many_requests') {
+        setErrorMessage(
+          messageParam || 'Too many sign-in attempts. Please wait a few minutes before trying again.'
+        )
       } else {
         setErrorMessage(messageParam || 'Social authentication failed. Please try again.')
       }
@@ -43,6 +48,9 @@ export default function OAuthCallbackPage({ onNavigate }) {
       setErrorMessage('Missing authorization response code. Please try signing in again.')
       return
     }
+
+    if (executedRef.current) return
+    executedRef.current = true
 
     let isMounted = true
 

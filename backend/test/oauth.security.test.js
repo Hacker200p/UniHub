@@ -497,4 +497,20 @@ describe('Social OAuth, Security & Account Management', () => {
       expect(res.body.data.privacySettings.showGithub).toBe(false)
     })
   })
+
+  describe('6. Route-Specific Rate Limiting & Separation', () => {
+    it('GET /api/auth/providers is not throttled and returns 200 reliably', async () => {
+      for (let i = 0; i < 5; i++) {
+        const res = await request(app).get('/api/auth/providers')
+        expect(res.status).toBe(200)
+        expect(res.body.success).toBe(true)
+      }
+    })
+
+    it('OAuth routes respond with proper status without 429 on standard flow', async () => {
+      const res = await request(app).get('/api/auth/google?format=json')
+      expect([200, 302, 503]).toContain(res.status)
+      expect(res.status).not.toBe(429)
+    })
+  })
 })

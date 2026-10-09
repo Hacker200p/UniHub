@@ -86,6 +86,8 @@ export default function AuthPage({ mode = 'login', onNavigate }) {
       setError(messageParam || 'Registration requires an authorized university email domain.')
     } else if (errorParam === 'oauth_cancelled' || errorParam === 'access_denied') {
       setError('Social sign-in was cancelled. Please try again.')
+    } else if (errorParam === 'too_many_requests') {
+      setError(messageParam || 'Too many sign-in attempts. Please wait a few minutes before trying again.')
     } else if (errorParam) {
       setError(messageParam || (errorParam !== 'true' ? errorParam : 'Authentication failed. Please try again.'))
     }

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import './App.css'
 import ResourcesPage from './pages/ResourcesPage.jsx'
 import AuthPage from './pages/AuthPage.jsx'
@@ -247,11 +247,11 @@ function Home({ onNavigate }) {
 function App() {
   const [path, setPath] = useState(window.location.pathname)
 
-  const navigate = (nextPath) => {
+  const navigate = useCallback((nextPath) => {
     window.history.pushState({}, '', nextPath)
     setPath(nextPath)
     window.scrollTo(0, 0)
-  }
+  }, [])
 
   useEffect(() => {
     const onPopState = () => setPath(window.location.pathname)
