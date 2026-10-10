@@ -8,7 +8,7 @@ const resourceSchema = new Schema({
   description: { type: String, trim: true, maxlength: 3000, default: '' },
   resourceType: { type: String, enum: ['NOTES', 'PYQ', 'ASSIGNMENT', 'LAB_MATERIAL', 'REFERENCE', 'SYLLABUS', 'OTHER'], required: true },
   examType: { type: String, enum: ['MID_TERM', 'END_TERM', 'NONE'], default: 'NONE' },
-  academicYear: { type: Number, min: 2000, max: 2200 },
+  academicYear: { type: Number, min: 1, max: 2200 },
   programId: { type: Schema.Types.ObjectId, ref: 'Program', required: true },
   branchId: { type: Schema.Types.ObjectId, ref: 'Branch' },
   semesterId: { type: Schema.Types.ObjectId, ref: 'Semester', required: true },

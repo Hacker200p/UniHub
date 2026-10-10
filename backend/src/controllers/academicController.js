@@ -25,30 +25,55 @@ export async function listBranches(req, res) {
   )
 }
 
+export async function listAcademicYears(req, res) {
+  const query = academicQuerySchema.parse(req.query)
+  const filter = {
+    universityId: env.UNIVERSITY_ID,
+    isActive: true,
+    ...(query.programId ? { programId: query.programId } : {}),
+    ...(query.branchId ? { branchId: query.branchId } : {}),
+  }
+  const semesters = await Semester.find(filter).select('academicYear number').sort({ number: 1 })
+  const years = [...new Set(semesters.map((s) => s.academicYear || Math.ceil(s.number / 2)).filter(Boolean))].sort((a, b) => a - b)
+  return successResponse(res, years)
+}
+
 export async function listSemesters(req, res) {
   const query = academicQuerySchema.parse(req.query)
+  const filter = {
+    universityId: env.UNIVERSITY_ID,
+    ...(query.programId ? { programId: query.programId } : {}),
+    ...(query.branchId ? { branchId: query.branchId } : {}),
+    isActive: true,
+  }
+  if (query.academicYear) {
+    const yr = Number(query.academicYear)
+    filter.$or = [
+      { academicYear: yr },
+      { number: { $in: [(yr - 1) * 2 + 1, yr * 2] } },
+    ]
+  }
   return successResponse(
     res,
-    await Semester.find({
-      universityId: env.UNIVERSITY_ID,
-      ...(query.programId ? { programId: query.programId } : {}),
-      ...(query.branchId ? { branchId: query.branchId } : {}),
-      isActive: true,
-    }).sort({ number: 1 }),
+    await Semester.find(filter).sort({ number: 1 }),
   )
 }
 
 export async function listSubjects(req, res) {
   const query = academicQuerySchema.parse(req.query)
+  const filter = {
+    universityId: env.UNIVERSITY_ID,
+    ...(query.programId ? { programId: query.programId } : {}),
+    ...(query.branchId ? { branchId: query.branchId } : {}),
+    ...(query.semesterId ? { semesterId: query.semesterId } : {}),
+    ...(query.academicYear ? { academicYear: Number(query.academicYear) } : {}),
+    ...(query.subjectType ? { subjectType: query.subjectType } : {}),
+    ...(query.electiveGroup ? { electiveGroup: query.electiveGroup } : {}),
+    isActive: true,
+  }
   return successResponse(
     res,
-    await Subject.find({
-      universityId: env.UNIVERSITY_ID,
-      ...(query.programId ? { programId: query.programId } : {}),
-      ...(query.branchId ? { branchId: query.branchId } : {}),
-      ...(query.semesterId ? { semesterId: query.semesterId } : {}),
-      isActive: true,
-    }).sort({ name: 1 }),
+    await Subject.find(filter).sort({ code: 1, name: 1 }),
   )
 }
 

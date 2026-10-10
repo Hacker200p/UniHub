@@ -38,13 +38,15 @@ export const api = {
   // Academic structure endpoints
   listPrograms: () => request('/programs'),
   listBranches: (programId) => request(`/branches?programId=${programId}`),
-  listSemesters: (programId, branchId = '') =>
+  listAcademicYears: (programId, branchId = '') =>
+    request(`/academic-years?programId=${programId}${branchId ? `&branchId=${branchId}` : ''}`),
+  listSemesters: (programId, branchId = '', academicYear = '') =>
     request(
-      `/semesters?programId=${programId}${branchId ? `&branchId=${branchId}` : ''}`,
+      `/semesters?programId=${programId}${branchId ? `&branchId=${branchId}` : ''}${academicYear ? `&academicYear=${academicYear}` : ''}`,
     ),
-  listSubjects: (programId, branchId, semesterId) =>
+  listSubjects: (programId, branchId = '', semesterId = '', subjectType = '', electiveGroup = '') =>
     request(
-      `/subjects?programId=${programId}${branchId ? `&branchId=${branchId}` : ''}${semesterId ? `&semesterId=${semesterId}` : ''}`,
+      `/subjects?programId=${programId}${branchId ? `&branchId=${branchId}` : ''}${semesterId ? `&semesterId=${semesterId}` : ''}${subjectType ? `&subjectType=${subjectType}` : ''}${electiveGroup ? `&electiveGroup=${encodeURIComponent(electiveGroup)}` : ''}`,
     ),
 
   // Student / User endpoints

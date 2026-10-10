@@ -8,6 +8,7 @@ import {
   deleteProgram,
   deleteSemester,
   deleteSubject,
+  listAcademicYears,
   listAllAcademic,
   listBranches,
   listPrograms,
@@ -25,6 +26,7 @@ export const academicRouter = Router()
 // Public academic endpoints
 academicRouter.get('/programs', listPrograms)
 academicRouter.get('/branches', listBranches)
+academicRouter.get('/academic-years', listAcademicYears)
 academicRouter.get('/semesters', listSemesters)
 academicRouter.get('/subjects', listSubjects)
 

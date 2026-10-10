@@ -8,6 +8,7 @@ import { env } from '../config/env.js'
 import { successResponse } from '../utils/apiResponse.js'
 import { HttpError } from '../utils/httpError.js'
 import { slugify } from '../utils/slug.js'
+import { validateAcademicHierarchy } from '../utils/academicValidation.js'
 
 const publicResourceQuery = { universityId: env.UNIVERSITY_ID, status: 'APPROVED' }
 const publicResourceFields = '-file.storageKey -file.sha256 -reviewedBy -rejectionReason'
@@ -36,6 +37,14 @@ export async function getResource(req, res) {
 }
 
 export async function createResource(req, res) {
+  await validateAcademicHierarchy({
+    universityId: env.UNIVERSITY_ID,
+    programId: req.body.programId,
+    branchId: req.body.branchId,
+    semesterId: req.body.semesterId,
+    subjectId: req.body.subjectId,
+    academicYear: req.body.academicYear,
+  })
   const resource = await Resource.create({ ...req.body, universityId: env.UNIVERSITY_ID, contributorId: req.user._id, slug: `${slugify(req.body.title)}-${Date.now()}` })
   return successResponse(res, { resource }, 'Resource submitted and is waiting for review', 201)
 }

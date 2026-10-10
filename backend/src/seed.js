@@ -6,6 +6,7 @@ import { User } from './models/User.js'
 import { Developer } from './models/Developer.js'
 import { Resource } from './models/Resource.js'
 import { slugify } from './utils/slug.js'
+import { importCurriculum } from './services/curriculumImporter.js'
 
 async function upsert(model, filter, values) {
   return model.findOneAndUpdate(filter, values, {
@@ -188,6 +189,8 @@ async function seed() {
       linkedinUrl: 'https://linkedin.com',
     },
   )
+
+  await importCurriculum({ universityId, verbose: true })
   console.log('Seed complete')
 }
 

@@ -6,7 +6,7 @@ export const resourceCreateSchema = z.object({
   description: z.string().trim().max(3000).default(''),
   resourceType: z.enum(['NOTES', 'PYQ', 'ASSIGNMENT', 'LAB_MATERIAL', 'REFERENCE', 'SYLLABUS', 'OTHER']),
   examType: z.enum(['MID_TERM', 'END_TERM', 'NONE']).default('NONE'),
-  academicYear: z.coerce.number().int().min(2000).max(2200).optional(),
+  academicYear: z.coerce.number().int().min(1).max(2200).optional(),
   programId: objectId,
   branchId: objectId.optional(),
   semesterId: objectId,

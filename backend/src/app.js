@@ -15,6 +15,8 @@ import { userRouter } from './routes/userRoutes.js'
 import { adminRouter } from './routes/adminRoutes.js'
 import { notificationRouter } from './routes/notificationRoutes.js'
 import { requestRouter } from './routes/requestRoutes.js'
+import { Resource } from './models/Resource.js'
+import { verifyAccessToken } from './utils/tokens.js'
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js'
 
 export const app = express()
@@ -23,7 +25,58 @@ app.disable('x-powered-by')
 app.use(helmet())
 app.use(cors({ origin: env.CLIENT_URL, credentials: true }))
 app.use(express.json({ limit: '100kb' }))
-app.use('/uploads', express.static(storagePath, { dotfiles: 'deny', index: false }))
+app.use(
+  '/uploads',
+  async (req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next()
+
+    const fileName = path.basename(req.path)
+    if (!fileName || fileName === '.' || fileName === '/') return next()
+
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
+
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const resource = await Resource.findOne({
+          $or: [
+            { 'file.storageKey': fileName },
+            { 'file.url': req.originalUrl.split('?')[0] },
+            { 'file.url': `/uploads/${fileName}` },
+          ],
+        })
+
+        if (resource && resource.status !== 'APPROVED') {
+          const authHeader = req.get('authorization')
+          const rawToken =
+            (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : '') || req.query?.token
+          if (rawToken) {
+            try {
+              const user = verifyAccessToken(rawToken)
+              if (
+                user.role === 'ADMIN' ||
+                user.role === 'MODERATOR' ||
+                (resource.contributorId && user.sub === resource.contributorId.toString())
+              ) {
+                return next()
+              }
+            } catch {
+              // Token verification failed
+            }
+          }
+          return res.status(404).json({
+            success: false,
+            message: `Route not found: ${req.method} ${req.originalUrl}`,
+          })
+        }
+      } catch {
+        // Fall back to next on database read error
+      }
+    }
+
+    next()
+  },
+  express.static(storagePath, { dotfiles: 'deny', index: false }),
+)
 app.use(
   rateLimit({
     windowMs: env.RATE_LIMIT_WINDOW_MS,

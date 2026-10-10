@@ -12,7 +12,8 @@
     "api:dev": "npm --prefix backend run dev",
     "api:test": "npm --prefix backend test",
     "api:lint": "npm --prefix backend run lint",
-    "api:seed": "npm --prefix backend run seed"
+    "api:seed": "npm --prefix backend run seed",
+    "api:import-curriculum": "npm --prefix backend run import:curriculum"
   },
   "dependencies": {
     "react": "^19.2.8",

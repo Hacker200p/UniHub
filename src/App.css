@@ -1446,3 +1446,267 @@ body { background: var(--cream); color: var(--ink); font-family: var(--sans); }
     width: 100%;
   }
 }
+
+/* Enhanced Upload Form & Cascading Dropdowns */
+.enhanced-upload-form {
+  max-width: 760px;
+  display: grid;
+  gap: 28px;
+}
+
+.form-section {
+  display: grid;
+  gap: 16px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 24px;
+}
+
+.section-title {
+  margin: 0;
+  font: 500 20px var(--serif);
+  color: var(--ink);
+}
+
+.section-hint {
+  margin: -6px 0 6px;
+  color: var(--muted);
+  font: 12px var(--sans);
+  line-height: 1.5;
+}
+
+.form-row-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .form-row-2 {
+    grid-template-columns: 1fr;
+  }
+}
+
+.required-star {
+  color: #c94a38;
+  margin-left: 2px;
+  font-weight: bold;
+}
+
+.loading-badge {
+  font: 10px var(--mono);
+  color: var(--muted);
+  margin-left: 8px;
+  font-weight: normal;
+}
+
+.pyq-banner {
+  background: rgba(184, 134, 11, 0.08);
+  border-left: 3px solid #b8860b;
+  padding: 14px 16px;
+  margin-top: 4px;
+}
+
+.field-hint {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font: 11px var(--sans);
+  line-height: 1.4;
+}
+
+.dropdown-label {
+  display: flex !important;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.subject-selection-container {
+  display: grid;
+  gap: 10px;
+}
+
+.subject-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.subject-subfilters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.pill-group {
+  display: flex;
+  gap: 4px;
+}
+
+.filter-pill {
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 4px 10px;
+  font: 11px var(--mono);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filter-pill:hover {
+  background: var(--cream);
+}
+
+.filter-pill.active {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+
+.elective-filter-select {
+  padding: 4px 8px;
+  font: 11px var(--mono);
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  max-width: 220px;
+}
+
+.subject-search-bar {
+  padding: 10px 12px;
+  font: 12px var(--sans);
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.subject-dropdown-select {
+  padding: 12px;
+  font: 13px var(--sans);
+  border: 1px solid var(--line);
+  background: var(--cream);
+  color: var(--ink);
+}
+
+.selected-subject-card {
+  margin-top: 8px;
+  padding: 16px;
+  background: rgba(78, 112, 99, 0.08);
+  border: 1px solid rgba(78, 112, 99, 0.3);
+  display: grid;
+  gap: 6px;
+}
+
+.card-badge-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.subject-code-badge {
+  background: var(--ink);
+  color: var(--paper);
+  padding: 2px 8px;
+  font: 600 11px var(--mono);
+}
+
+.subject-type-badge {
+  padding: 2px 8px;
+  font: 10px var(--mono);
+  text-transform: uppercase;
+}
+
+.subject-type-badge.theory {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.subject-type-badge.practical {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.elective-group-badge {
+  background: #fef3c7;
+  color: #92400e;
+  padding: 2px 8px;
+  font: 10px var(--mono);
+}
+
+.subject-name {
+  margin: 2px 0 0;
+  font: 500 17px var(--serif);
+  color: var(--ink);
+}
+
+.provenance-info {
+  margin: 0;
+  color: var(--muted);
+  font: 11px var(--mono);
+}
+
+.pdf-dropzone {
+  border: 2px dashed var(--line);
+  padding: 28px 20px;
+  text-align: center;
+  background: var(--cream);
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+.pdf-dropzone:hover,
+.pdf-dropzone.drag-active {
+  border-color: var(--ink);
+  background: var(--paper);
+}
+
+.pdf-dropzone.has-file {
+  border-color: #4e7063;
+  background: rgba(78, 112, 99, 0.06);
+}
+
+.dropzone-file-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+
+.dropzone-content {
+  pointer-events: none;
+}
+
+.dropzone-prompt {
+  margin: 0 0 4px;
+  font: 500 14px var(--sans);
+  color: var(--ink);
+}
+
+.dropzone-hint {
+  margin: 0;
+  font: 11px var(--mono);
+  color: var(--muted);
+}
+
+.dropzone-filename {
+  margin: 0 0 4px;
+  font: 600 14px var(--sans);
+  color: #2b5742;
+}
+
+.dropzone-filesize {
+  margin: 0;
+  font: 11px var(--mono);
+  color: var(--muted);
+}
+
+.submit-btn {
+  margin-top: 10px;
+  justify-self: start;
+}
+
