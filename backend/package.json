@@ -21,13 +21,13 @@
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.18.0",
     "multer": "^2.4.0",
-    "nodemailer": "^7.0.6",
+    "nodemailer": "^10.0.9",
     "xlsx": "^0.18.5",
     "zod": "^4.1.5"
   },
   "devDependencies": {
     "oxlint": "^1.81.0",
     "supertest": "^7.1.4",
-    "vitest": "^3.2.4"
+    "vitest": "^5.0.3"
   }
 }
