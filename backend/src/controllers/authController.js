@@ -687,10 +687,45 @@ export async function exchangeOAuthCode(req, res) {
   const { code } = req.body
   if (!code) throw new HttpError(400, 'Exchange code is required')
 
-  const decoded = verifyOAuthHandoff(code)
+  let decoded
+  try {
+    decoded = verifyOAuthHandoff(code)
+  } catch (err) {
+    // If ticket is expired/stale, check if an active refresh session cookie is present
+    const refreshToken = getRefreshCookie(req)
+    if (refreshToken) {
+      const incomingHash = hashToken(refreshToken)
+      const now = new Date()
+      const activeSession = await RefreshSession.findOne({
+        universityId: env.UNIVERSITY_ID,
+        tokenHash: incomingHash,
+        revokedAt: null,
+        expiresAt: { $gt: now },
+      })
+      if (activeSession) {
+        const sessionUser = await User.findOne({
+          _id: activeSession.userId,
+          universityId: env.UNIVERSITY_ID,
+          isActive: true,
+        })
+        if (sessionUser) {
+          return successResponse(
+            res,
+            {
+              user: sessionUser.toPrivateJSON(),
+              accessToken: createAccessToken(sessionUser),
+            },
+            'Authentication exchange successful via active session',
+          )
+        }
+      }
+    }
+    throw err
+  }
+
   const user = await User.findOne({
     _id: decoded.sub,
-    universityId: env.UNIVERSITY_ID,
+    universityId: decoded.universityId || env.UNIVERSITY_ID,
     isActive: true,
   })
 
@@ -707,3 +742,4 @@ export async function exchangeOAuthCode(req, res) {
     'Authentication exchange successful',
   )
 }
+

@@ -396,60 +396,72 @@ export default function SettingsPage({ activeTab = 'profile', onNavigate }) {
                         user.name?.slice(0, 2).toUpperCase()
                       )}
                     </div>
-                    <div>
+                    <div className="avatar-user-meta">
                       <h3>{user.name}</h3>
                       <p className="muted">{user.email} · {user.role}</p>
                     </div>
                   </div>
 
-                  <label>
-                    Display Name
-                    <input
-                      required
-                      value={profileForm.name}
-                      onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
-                    />
-                  </label>
+                  <div className="form-field">
+                    <label>
+                      Display Name <span className="required-star">*</span>
+                      <input
+                        required
+                        value={profileForm.name}
+                        onChange={(e) => setProfileForm({ ...profileForm, name: e.target.value })}
+                      />
+                    </label>
+                  </div>
 
-                  <label>
-                    Avatar Image URL
-                    <input
-                      type="url"
-                      placeholder="https://..."
-                      value={profileForm.avatarUrl}
-                      onChange={(e) => setProfileForm({ ...profileForm, avatarUrl: e.target.value })}
-                    />
-                  </label>
+                  <div className="form-field">
+                    <label>
+                      Avatar Image URL
+                      <input
+                        type="url"
+                        placeholder="https://..."
+                        value={profileForm.avatarUrl}
+                        onChange={(e) => setProfileForm({ ...profileForm, avatarUrl: e.target.value })}
+                      />
+                    </label>
+                  </div>
 
-                  <label>
-                    Bio
-                    <textarea
-                      rows="3"
-                      placeholder="Tell peers what you study or what resources you specialize in..."
-                      value={profileForm.bio}
-                      onChange={(e) => setProfileForm({ ...profileForm, bio: e.target.value })}
-                    />
-                  </label>
+                  <div className="form-field">
+                    <label>
+                      Bio
+                      <textarea
+                        rows="3"
+                        placeholder="Tell peers what you study or what resources you specialize in..."
+                        value={profileForm.bio}
+                        onChange={(e) => setProfileForm({ ...profileForm, bio: e.target.value })}
+                      />
+                    </label>
+                  </div>
 
-                  <label>
-                    GitHub Profile URL
-                    <input
-                      type="url"
-                      placeholder="https://github.com/your-username"
-                      value={profileForm.githubUrl}
-                      onChange={(e) => setProfileForm({ ...profileForm, githubUrl: e.target.value })}
-                    />
-                  </label>
+                  <div className="form-row-2">
+                    <div className="form-field">
+                      <label>
+                        GitHub Profile URL
+                        <input
+                          type="url"
+                          placeholder="https://github.com/your-username"
+                          value={profileForm.githubUrl}
+                          onChange={(e) => setProfileForm({ ...profileForm, githubUrl: e.target.value })}
+                        />
+                      </label>
+                    </div>
 
-                  <label>
-                    LinkedIn Profile URL
-                    <input
-                      type="url"
-                      placeholder="https://linkedin.com/in/your-profile"
-                      value={profileForm.linkedinUrl}
-                      onChange={(e) => setProfileForm({ ...profileForm, linkedinUrl: e.target.value })}
-                    />
-                  </label>
+                    <div className="form-field">
+                      <label>
+                        LinkedIn Profile URL
+                        <input
+                          type="url"
+                          placeholder="https://linkedin.com/in/your-profile"
+                          value={profileForm.linkedinUrl}
+                          onChange={(e) => setProfileForm({ ...profileForm, linkedinUrl: e.target.value })}
+                        />
+                      </label>
+                    </div>
+                  </div>
 
                   <label className="checkbox-label">
                     <input
@@ -495,10 +507,10 @@ export default function SettingsPage({ activeTab = 'profile', onNavigate }) {
                     <div className="provider-card">
                       <div className="provider-info">
                         <GoogleIcon />
-                        <div>
-                          <strong>Google</strong>
+                        <div className="provider-meta">
+                          <strong className="provider-name">Google</strong>
                           {isProviderLinked('google') ? (
-                            <span className="linked-badge">
+                            <span className="linked-badge" title={isProviderLinked('google').email}>
                               ✓ Connected ({isProviderLinked('google').email})
                             </span>
                           ) : (
@@ -533,10 +545,10 @@ export default function SettingsPage({ activeTab = 'profile', onNavigate }) {
                     <div className="provider-card">
                       <div className="provider-info">
                         <GithubIcon />
-                        <div>
-                          <strong>GitHub</strong>
+                        <div className="provider-meta">
+                          <strong className="provider-name">GitHub</strong>
                           {isProviderLinked('github') ? (
-                            <span className="linked-badge">
+                            <span className="linked-badge" title={isProviderLinked('github').email}>
                               ✓ Connected ({isProviderLinked('github').email})
                             </span>
                           ) : (
@@ -571,10 +583,10 @@ export default function SettingsPage({ activeTab = 'profile', onNavigate }) {
                     <div className="provider-card">
                       <div className="provider-info">
                         <MicrosoftIcon />
-                        <div>
-                          <strong>Microsoft</strong>
+                        <div className="provider-meta">
+                          <strong className="provider-name">Microsoft</strong>
                           {isProviderLinked('microsoft') ? (
-                            <span className="linked-badge">
+                            <span className="linked-badge" title={isProviderLinked('microsoft').email}>
                               ✓ Connected ({isProviderLinked('microsoft').email})
                             </span>
                           ) : (

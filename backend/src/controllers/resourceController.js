@@ -1,3 +1,6 @@
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import mongoose from 'mongoose'
 import { Resource } from '../models/Resource.js'
 import { Download } from '../models/Download.js'
@@ -10,22 +13,80 @@ import { HttpError } from '../utils/httpError.js'
 import { slugify } from '../utils/slug.js'
 import { validateAcademicHierarchy } from '../utils/academicValidation.js'
 
+import { Program, Branch, Subject } from '../models/Academic.js'
+
 const publicResourceQuery = { universityId: env.UNIVERSITY_ID, status: 'APPROVED' }
 const publicResourceFields = '-file.storageKey -file.sha256 -reviewedBy -rejectionReason'
 
 export async function listResources(req, res) {
   const { q, programId, branchId, semesterId, subjectId, resourceType, examType, academicYear } = req.query
   const query = { ...publicResourceQuery }
-  if (q) query.$text = { $search: q }
+
+  const trimmedQ = (q || '').trim()
+  if (trimmedQ) {
+    const escaped = trimmedQ.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(escaped, 'i')
+
+    const [matchingSubjects, matchingPrograms, matchingBranches, matchingContributors] = await Promise.all([
+      Subject.find({ universityId: env.UNIVERSITY_ID, $or: [{ name: regex }, { code: regex }] })
+        .select('_id')
+        .lean(),
+      Program.find({ universityId: env.UNIVERSITY_ID, $or: [{ name: regex }, { code: regex }] })
+        .select('_id')
+        .lean(),
+      Branch.find({ universityId: env.UNIVERSITY_ID, $or: [{ name: regex }, { code: regex }] })
+        .select('_id')
+        .lean(),
+      User.find({ universityId: env.UNIVERSITY_ID, name: regex, publicProfile: { $ne: false }, isActive: true })
+        .select('_id')
+        .lean(),
+    ])
+
+    const orClauses = [
+      { title: regex },
+      { description: regex },
+    ]
+    if (matchingSubjects.length) orClauses.push({ subjectId: { $in: matchingSubjects.map((s) => s._id) } })
+    if (matchingPrograms.length) orClauses.push({ programId: { $in: matchingPrograms.map((p) => p._id) } })
+    if (matchingBranches.length) orClauses.push({ branchId: { $in: matchingBranches.map((b) => b._id) } })
+    if (matchingContributors.length) orClauses.push({ contributorId: { $in: matchingContributors.map((c) => c._id) } })
+
+    const upperQ = trimmedQ.toUpperCase()
+    if (['NOTES', 'PYQ', 'ASSIGNMENT', 'LAB_MATERIAL', 'REFERENCE', 'SYLLABUS', 'OTHER'].includes(upperQ)) {
+      orClauses.push({ resourceType: upperQ })
+    }
+    const numQ = Number(trimmedQ)
+    if (!Number.isNaN(numQ) && numQ >= 1 && numQ <= 10) {
+      orClauses.push({ academicYear: numQ })
+    }
+
+    query.$or = orClauses
+  }
+
   if (programId) query.programId = programId
   if (branchId) query.branchId = branchId
   if (semesterId) query.semesterId = semesterId
   if (subjectId) query.subjectId = subjectId
-  if (resourceType) query.resourceType = resourceType
-  if (examType) query.examType = examType
+  if (resourceType && resourceType !== 'all') query.resourceType = resourceType
+  if (examType && examType !== 'all') query.examType = examType
   if (academicYear) query.academicYear = Number(academicYear)
-  const resources = await Resource.find(query).select(publicResourceFields).populate('contributorId', 'name publicProfile').sort({ createdAt: -1 }).limit(100).lean()
-  return successResponse(res, resources.map((resource) => ({ ...resource, contributor: resource.contributorId?.publicProfile === false ? null : resource.contributorId?.name || null, contributorId: resource.contributorId?.publicProfile === false ? null : resource.contributorId?._id || null })))
+
+  const resources = await Resource.find(query)
+    .select(publicResourceFields)
+    .populate('contributorId', 'name publicProfile avatarUrl')
+    .populate('programId branchId semesterId subjectId', 'name code number')
+    .sort({ createdAt: -1 })
+    .limit(100)
+    .lean()
+
+  return successResponse(
+    res,
+    resources.map((resource) => ({
+      ...resource,
+      contributor: resource.contributorId?.publicProfile === false ? null : resource.contributorId?.name || null,
+      contributorId: resource.contributorId?.publicProfile === false ? null : resource.contributorId?._id || null,
+    }))
+  )
 }
 
 export async function getResource(req, res) {
@@ -53,6 +114,17 @@ export async function downloadResource(req, res) {
   if (!mongoose.isValidObjectId(req.params.id)) throw new HttpError(404, 'Resource not found')
   const resource = await Resource.findOne({ ...publicResourceQuery, _id: req.params.id })
   if (!resource) throw new HttpError(404, 'Resource not found')
+
+  if (env.STORAGE_PROVIDER !== 's3' && resource.file?.storageKey) {
+    const storagePath = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '../../storage',
+      resource.file.storageKey,
+    )
+    const exists = await fs.access(storagePath).then(() => true).catch(() => false)
+    if (!exists) throw new HttpError(404, 'Resource file is not available')
+  }
+
   await Download.create({ universityId: env.UNIVERSITY_ID, resourceId: resource._id, userId: req.user?._id || null })
   await Resource.updateOne({ _id: resource._id }, { $inc: { downloadCount: 1 } })
   return successResponse(res, { url: resource.file.url, fileName: resource.file.fileName }, 'Download recorded')
@@ -94,5 +166,84 @@ export async function requestChangesResource(req, res) {
   return successResponse(res, resource, 'Changes requested')
 }
 
-export async function contributorProfile(req, res) { if (!mongoose.isValidObjectId(req.params.id)) throw new HttpError(404, 'Contributor not found'); const user = await User.findOne({ _id: req.params.id, universityId: env.UNIVERSITY_ID, publicProfile: true, isActive: true }).select('name programId branchId semesterId createdAt publicProfile').populate('programId branchId semesterId', 'name code number').lean(); if (!user) throw new HttpError(404, 'Contributor not found'); const resources = await Resource.find({ ...publicResourceQuery, contributorId: user._id }).select(publicResourceFields).sort({ createdAt: -1 }).lean(); return successResponse(res, { contributor: user, statistics: { approvedContributions: resources.length, totalDownloads: resources.reduce((sum, item) => sum + item.downloadCount, 0), subjectsContributed: new Set(resources.map((item) => item.subjectId.toString())).size }, resources }) }
-export async function listContributors(req, res) { const users = await User.find({ universityId: env.UNIVERSITY_ID, publicProfile: true, isActive: true }).select('name programId branchId semesterId createdAt').populate('programId branchId semesterId', 'name code number').lean(); const counts = await Resource.aggregate([{ $match: publicResourceQuery }, { $group: { _id: '$contributorId', count: { $sum: 1 }, downloads: { $sum: '$downloadCount' } } }]); const map = new Map(counts.map((item) => [item._id.toString(), item])); return successResponse(res, users.map((user) => ({ ...user, approvedContributions: map.get(user._id.toString())?.count || 0, totalDownloads: map.get(user._id.toString())?.downloads || 0 })).sort((a, b) => b.approvedContributions - a.approvedContributions)) }
+export async function contributorProfile(req, res) {
+  if (!mongoose.isValidObjectId(req.params.id)) throw new HttpError(404, 'Contributor not found')
+  const user = await User.findOne({
+    _id: req.params.id,
+    universityId: env.UNIVERSITY_ID,
+    publicProfile: true,
+    isActive: true,
+  })
+    .select('name role programId branchId semesterId avatarUrl bio privacySettings createdAt')
+    .populate('programId branchId semesterId', 'name code number')
+    .lean()
+  if (!user) throw new HttpError(404, 'Contributor not found')
+
+  const resources = await Resource.find({ ...publicResourceQuery, contributorId: user._id })
+    .select(publicResourceFields)
+    .populate('programId branchId semesterId subjectId', 'name code number')
+    .sort({ createdAt: -1 })
+    .lean()
+
+  const safeContributor = {
+    _id: user._id,
+    id: user._id,
+    name: user.name,
+    role: user.role,
+    avatarUrl: user.privacySettings?.showAvatar !== false ? user.avatarUrl || '' : '',
+    bio: user.privacySettings?.showBio !== false ? user.bio || '' : '',
+    programId: user.privacySettings?.showAcademicInfo !== false ? user.programId : null,
+    branchId: user.privacySettings?.showAcademicInfo !== false ? user.branchId : null,
+    semesterId: user.privacySettings?.showAcademicInfo !== false ? user.semesterId : null,
+    createdAt: user.createdAt,
+  }
+
+  return successResponse(res, {
+    contributor: safeContributor,
+    statistics: {
+      approvedContributions: resources.length,
+      totalDownloads: resources.reduce((sum, item) => sum + (item.downloadCount || 0), 0),
+      subjectsContributed: new Set(
+        resources.map((item) => item.subjectId?._id?.toString() || item.subjectId?.toString())
+      ).size,
+    },
+    resources,
+  })
+}
+
+export async function listContributors(req, res) {
+  const users = await User.find({
+    universityId: env.UNIVERSITY_ID,
+    publicProfile: true,
+    isActive: true,
+  })
+    .select('name role avatarUrl bio programId branchId semesterId privacySettings createdAt')
+    .populate('programId branchId semesterId', 'name code number')
+    .lean()
+
+  const counts = await Resource.aggregate([
+    { $match: publicResourceQuery },
+    { $group: { _id: '$contributorId', count: { $sum: 1 }, downloads: { $sum: '$downloadCount' } } },
+  ])
+  const map = new Map(counts.map((item) => [item._id.toString(), item]))
+
+  return successResponse(
+    res,
+    users
+      .map((user) => ({
+        _id: user._id,
+        id: user._id,
+        name: user.name,
+        role: user.role,
+        avatarUrl: user.privacySettings?.showAvatar !== false ? user.avatarUrl || '' : '',
+        bio: user.privacySettings?.showBio !== false ? user.bio || '' : '',
+        programId: user.privacySettings?.showAcademicInfo !== false ? user.programId : null,
+        branchId: user.privacySettings?.showAcademicInfo !== false ? user.branchId : null,
+        semesterId: user.privacySettings?.showAcademicInfo !== false ? user.semesterId : null,
+        createdAt: user.createdAt,
+        approvedContributions: map.get(user._id.toString())?.count || 0,
+        totalDownloads: map.get(user._id.toString())?.downloads || 0,
+      }))
+      .sort((a, b) => b.approvedContributions - a.approvedContributions)
+  )
+}

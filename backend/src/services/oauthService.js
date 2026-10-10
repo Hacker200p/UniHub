@@ -287,7 +287,7 @@ export function createOAuthHandoff(user) {
     },
     env.JWT_SECRET,
     {
-      expiresIn: '90s',
+      expiresIn: '5m',
       issuer: 'university-study-hub',
       audience: 'oauth-handoff',
     },
@@ -299,6 +299,7 @@ export function verifyOAuthHandoff(code) {
     return jwt.verify(code, env.JWT_SECRET, {
       issuer: 'university-study-hub',
       audience: 'oauth-handoff',
+      clockTolerance: 15,
     })
   } catch {
     throw new HttpError(401, 'Invalid or expired authentication handoff ticket')

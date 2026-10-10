@@ -47,8 +47,7 @@ app.use(
 
         if (resource && resource.status !== 'APPROVED') {
           const authHeader = req.get('authorization')
-          const rawToken =
-            (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : '') || req.query?.token
+          const rawToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : ''
           if (rawToken) {
             try {
               const user = verifyAccessToken(rawToken)

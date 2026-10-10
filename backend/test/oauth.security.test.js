@@ -513,4 +513,39 @@ describe('Social OAuth, Security & Account Management', () => {
       expect(res.status).not.toBe(429)
     })
   })
+
+  describe('7. OAuth Handoff Exchange (POST /api/auth/oauth/exchange)', () => {
+    it('returns 400 when code is missing', async () => {
+      const res = await request(app).post('/api/auth/oauth/exchange').send({})
+      expect(res.status).toBe(400)
+    })
+
+    it('returns 401 when code is invalid or tampered', async () => {
+      const res = await request(app).post('/api/auth/oauth/exchange').send({ code: 'invalid.token' })
+      expect(res.status).toBe(401)
+      expect(res.body.message).toContain('Invalid or expired')
+    })
+
+    it('successfully exchanges valid handoff code for user session and access token', async () => {
+      const universityId = env.UNIVERSITY_ID
+      const testUser = await User.create({
+        universityId,
+        name: 'Handoff Student',
+        email: 'handoff.student@test-auth-oauth.edu',
+        role: 'STUDENT',
+        programId: testProgram._id,
+        authProviders: [{ provider: 'google', providerUserId: 'goog_12345', email: 'handoff.student@test-auth-oauth.edu' }],
+      })
+
+      const handoffCode = createOAuthHandoff(testUser)
+      const res = await request(app).post('/api/auth/oauth/exchange').send({ code: handoffCode })
+
+      expect(res.status).toBe(200)
+      expect(res.body.success).toBe(true)
+      expect(res.body.data.user).toBeDefined()
+      expect(res.body.data.user.email).toBe('handoff.student@test-auth-oauth.edu')
+      expect(res.body.data.accessToken).toBeDefined()
+    })
+  })
 })
+

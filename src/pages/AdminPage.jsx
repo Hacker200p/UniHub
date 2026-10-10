@@ -353,9 +353,25 @@ function PendingReviewsView({ token, onReloadOverview }) {
             )}
             {previewItem.file?.url && (
               <div className="admin-file-link-box">
-                <a className="primary-button" href={previewItem.file.url} target="_blank" rel="noreferrer">
+                <button
+                  type="button"
+                  className="primary-button"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(previewItem.file.url, {
+                        headers: token ? { Authorization: `Bearer ${token}` } : {},
+                      })
+                      if (!res.ok) throw new Error('Failed to load document')
+                      const blob = await res.blob()
+                      const blobUrl = URL.createObjectURL(blob)
+                      window.open(blobUrl, '_blank', 'noopener,noreferrer')
+                    } catch (err) {
+                      alert(err.message || 'Could not open attached PDF')
+                    }
+                  }}
+                >
                   Open / Download Attached PDF ↗
-                </a>
+                </button>
               </div>
             )}
             <div className="admin-modal-actions">
@@ -595,9 +611,25 @@ function ResourceManagementView({ token, onReloadOverview }) {
                   <td>
                     <strong>{item.title}</strong>
                     {item.file?.url && (
-                      <a href={item.file.url} target="_blank" rel="noreferrer" className="text-link block font-mono">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(item.file.url, {
+                              headers: token ? { Authorization: `Bearer ${token}` } : {},
+                            })
+                            if (!res.ok) throw new Error('Failed to load document')
+                            const blob = await res.blob()
+                            const blobUrl = URL.createObjectURL(blob)
+                            window.open(blobUrl, '_blank', 'noopener,noreferrer')
+                          } catch (err) {
+                            alert(err.message || 'Could not open attached PDF')
+                          }
+                        }}
+                        className="text-link block font-mono"
+                      >
                         View File ↗
-                      </a>
+                      </button>
                     )}
                   </td>
                   <td>{item.contributorId?.name || 'Anonymous'}</td>

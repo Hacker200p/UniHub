@@ -3,10 +3,18 @@ import { useAuth } from '../context/useAuth.js'
 import { api } from '../services/api.js'
 
 export default function OAuthCallbackPage({ onNavigate }) {
-  const { setAuthSession, isAuthenticated } = useAuth()
+  const { setAuthSession, refreshSession, isAuthenticated } = useAuth()
   const [status, setStatus] = useState('processing')
   const [errorMessage, setErrorMessage] = useState('')
   const executedRef = useRef(false)
+  const isMountedRef = useRef(true)
+
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -52,12 +60,10 @@ export default function OAuthCallbackPage({ onNavigate }) {
     if (executedRef.current) return
     executedRef.current = true
 
-    let isMounted = true
-
-    api
-      .exchangeOAuthCode(codeParam)
-      .then((data) => {
-        if (!isMounted) return
+    const finalizeAuth = async () => {
+      try {
+        const data = await api.exchangeOAuthCode(codeParam)
+        if (!isMountedRef.current) return
         if (data?.user && data?.accessToken) {
           setAuthSession(data)
           setStatus('success')
@@ -66,20 +72,37 @@ export default function OAuthCallbackPage({ onNavigate }) {
           } else {
             onNavigate('/dashboard')
           }
-        } else {
-          throw new Error('Incomplete session payload returned by server.')
+          return
         }
-      })
-      .catch((err) => {
-        if (!isMounted) return
-        setStatus('error')
-        setErrorMessage(err.message || 'Failed to finalize social sign-in session.')
-      })
+        throw new Error('Incomplete session payload returned by server.')
+      } catch (err) {
+        // Fallback: If code is stale or expired (401), attempt to restore session via the active HTTP-only refresh cookie
+        try {
+          const refreshed = await refreshSession()
+          if (!isMountedRef.current) return
+          if (refreshed?.user && refreshed?.accessToken) {
+            setStatus('success')
+            if (refreshed.user.role === 'ADMIN' || refreshed.user.role === 'MODERATOR') {
+              onNavigate('/admin')
+            } else {
+              onNavigate('/dashboard')
+            }
+            return
+          }
+        } catch {
+          // Cookie refresh also unavailable
+        }
 
-    return () => {
-      isMounted = false
+        if (!isMountedRef.current) return
+        setStatus('error')
+        setErrorMessage(
+          err.message || 'Social sign-in ticket expired or invalid. Please try signing in again.'
+        )
+      }
     }
-  }, [setAuthSession, onNavigate])
+
+    finalizeAuth()
+  }, [setAuthSession, refreshSession, onNavigate])
 
   return (
     <main className="auth-page">

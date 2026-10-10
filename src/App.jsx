@@ -31,12 +31,26 @@ const resources = [
   { title: 'Digital Electronics Unit 2', type: 'Notes', branch: 'ECE', semester: 'Semester 3', subject: 'Digital Electronics', contributor: 'Dev Patel' },
 ]
 
-function Avatar({ initials, tone = 'blue', large = false, src = '' }) {
-  if (src) {
-    return <img src={src} alt="User Avatar" className={`avatar avatar-img ${large ? 'avatar-large' : ''}`} />
-  }
-  return <div className={`avatar avatar-${tone} ${large ? 'avatar-large' : ''}`} aria-hidden="true">{initials}</div>
+function Avatar({ initials = '', tone = 'blue', large = false, size = '', src = '', name = '' }) {
+  const displayInitials = initials || (name ? name.slice(0, 2).toUpperCase() : 'US')
+  const sizeClass = size ? `avatar-${size}` : large ? 'avatar-large' : ''
+  return (
+    <div className={`avatar avatar-${tone} ${sizeClass}`} aria-hidden="true">
+      {src ? (
+        <img
+          src={src}
+          alt={name || 'Avatar'}
+          className="avatar-img"
+          onError={(e) => {
+            e.currentTarget.style.display = 'none'
+          }}
+        />
+      ) : null}
+      <span className="avatar-text">{displayInitials}</span>
+    </div>
+  )
 }
+
 
 function Header({ onNavigate }) {
   const { theme, toggleTheme } = useTheme()
@@ -91,6 +105,7 @@ function Header({ onNavigate }) {
                   initials={user.name ? user.name.slice(0, 2).toUpperCase() : 'US'}
                   src={user.avatarUrl}
                   tone="blue"
+                  size="small"
                 />
                 <span className="nav-user-name">{user.name?.split(' ')[0] || 'Account'}</span>
                 <span className="dropdown-caret" aria-hidden="true">▾</span>
@@ -124,7 +139,23 @@ function Header({ onNavigate }) {
           <button className="nav-auth-btn" onClick={() => onNavigate('/login')}>Member Login</button>
         )}
         <button className="theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>
-          {theme === 'light' ? '☾' : '☀'}
+          {theme === 'light' ? (
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+            </svg>
+          ) : (
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="5" />
+              <line x1="12" y1="1" x2="12" y2="3" />
+              <line x1="12" y1="21" x2="12" y2="23" />
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+              <line x1="1" y1="12" x2="3" y2="12" />
+              <line x1="21" y1="12" x2="23" y2="12" />
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+            </svg>
+          )}
         </button>
         <button className="nav-cta" onClick={() => onNavigate('/resources')}>
           Explore resources <span aria-hidden="true">↗</span>
@@ -134,111 +165,509 @@ function Header({ onNavigate }) {
   )
 }
 
-function DeveloperCard({ developer }) {
+function DeveloperCard({ developer, style }) {
   return (
-    <article className="developer-card">
+    <article className="developer-card" style={style}>
       <div className={`developer-banner banner-${developer.tone}`}>
         <span className="banner-label">DEVELOPED BY</span>
         <span className="banner-shape">✦</span>
       </div>
       <div className="developer-body">
-        <Avatar initials={developer.initials} tone={developer.tone} large />
+        <div className="developer-avatar-wrapper">
+          <Avatar initials={developer.initials} tone={developer.tone} large />
+        </div>
         <div className="developer-copy">
           <p className="eyebrow">{developer.role}</p>
           <h3>{developer.name}</h3>
           <p>{developer.description}</p>
         </div>
         <div className="skill-list">
-          {developer.skills.map((skill) => <span key={skill}>{skill}</span>)}
+          {developer.skills.map((skill) => (
+            <span key={skill}>{skill}</span>
+          ))}
         </div>
         <div className="developer-links">
-          <a className="primary-link" href={developer.website} target="_blank" rel="noreferrer">Visit website <span>↗</span></a>
-          <a href={developer.github} target="_blank" rel="noreferrer">GitHub</a>
-          <a href={developer.linkedin} target="_blank" rel="noreferrer">LinkedIn</a>
+          <a className="primary-link" href={developer.website} target="_blank" rel="noreferrer">
+            Visit website <span>↗</span>
+          </a>
+          <a href={developer.github} target="_blank" rel="noreferrer">
+            GitHub
+          </a>
+          <a href={developer.linkedin} target="_blank" rel="noreferrer">
+            LinkedIn
+          </a>
         </div>
       </div>
     </article>
   )
 }
 
-function ContributorCard({ contributor, onNavigate }) {
+function ContributorCard({ contributor, onNavigate, style }) {
   return (
-    <article className="contributor-card">
-      <div className="contributor-top">
-        <Avatar initials={contributor.initials} tone={contributor.tone} />
-        <span className="verified">✓ Verified</span>
+    <article className="contributor-card" style={style}>
+      <div>
+        <div className="contributor-top">
+          <Avatar initials={contributor.initials} tone={contributor.tone} />
+          <span className="verified">✓ Contributor</span>
+        </div>
+        <h3>{contributor.name}</h3>
+        <p className="contributor-meta">
+          {contributor.program} <span>•</span> {contributor.branch}
+        </p>
+        <p className="muted">{contributor.semester}</p>
       </div>
-      <h3>{contributor.name}</h3>
-      <p className="contributor-meta">{contributor.program} <span>•</span> {contributor.branch}</p>
-      <p className="muted">{contributor.semester}</p>
-      <div className="contribution-count">
-        <strong>{contributor.count}</strong>
-        <span>approved contributions</span>
+
+      <div>
+        <div className="contribution-count">
+          <strong>{contributor.count}</strong>
+          <span> approved contributions · {contributor.downloads} downloads</span>
+        </div>
+        <div className="badge-row">
+          {contributor.badges.map((badge) => (
+            <span key={badge}>{badge}</span>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="text-link"
+          onClick={() => onNavigate(`/contributors/${contributor.id}`)}
+        >
+          View contributions <span>→</span>
+        </button>
       </div>
-      <div className="badge-row">
-        {contributor.badges.map((badge) => <span key={badge}>{badge}</span>)}
-      </div>
-      <button className="text-link" onClick={() => onNavigate(`/contributors/${contributor.id}`)}>
-        View contributions <span>→</span>
-      </button>
     </article>
   )
 }
 
-function ResourceRow({ resource }) {
+function HomeResourceCard({ resource, onNavigate, style }) {
   return (
-    <article className="resource-row">
-      <div className="file-icon">PDF</div>
-      <div className="resource-main">
-        <h3>{resource.title}</h3>
-        <p>{resource.subject} <span>•</span> {resource.branch} <span>•</span> {resource.semester}</p>
+    <article
+      className="resource-card"
+      style={style}
+      onClick={() => onNavigate('/resources')}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onNavigate('/resources')
+      }}
+    >
+      <div className="resource-card-header">
+        <div className="resource-badges">
+          <span className={`type-badge badge-${resource.type.toLowerCase()}`}>{resource.type}</span>
+          <span className="year-badge">Semester</span>
+        </div>
+        <div className="file-type-pill">
+          <span>PDF</span>
+        </div>
       </div>
-      <span className="resource-type">{resource.type}</span>
-      <button className="download" aria-label={`View ${resource.title}`}>View <span>↗</span></button>
+      <div className="resource-card-body">
+        <h3 className="resource-title">{resource.title}</h3>
+        <div className="resource-academic-tags">
+          <span className="subject-name-tag">{resource.subject}</span>
+        </div>
+        <p className="resource-hierarchy-meta">
+          {resource.branch} · {resource.semester}
+        </p>
+      </div>
+      <div className="resource-card-footer">
+        <div className="contributor-info">
+          <div className="contributor-avatar-mini" aria-hidden="true">
+            {resource.contributor.slice(0, 2).toUpperCase()}
+          </div>
+          <span className="contributor-name">{resource.contributor}</span>
+        </div>
+        <div className="resource-stats-action">
+          <button
+            type="button"
+            className="card-action-btn"
+            onClick={(e) => {
+              e.stopPropagation()
+              onNavigate('/resources')
+            }}
+          >
+            Explore <span>↗</span>
+          </button>
+        </div>
+      </div>
     </article>
+  )
+}
+
+const SHOWCASE_CARDS = [
+  {
+    id: 'notes',
+    pageNumber: '01',
+    indicator: '01 / 03',
+    category: 'STUDY NOTES',
+    title: 'Class Notes & Summaries',
+    subject: 'Data Structures · Unit 01-04',
+    supporting: 'Learn, revise, and share knowledge.',
+    footerTag: '✓ Verified peer notes · Semester 3',
+    tone: 'coral',
+    renderBody: () => (
+      <div className="showcase-notes-lines">
+        <div className="notes-line-item">
+          <span className="notes-bullet">✦</span>
+          <span>AVL tree balance factors & rotations</span>
+        </div>
+        <div className="notes-line-item">
+          <span className="notes-bullet">✦</span>
+          <span>Graph shortest path (Dijkstra algorithm)</span>
+        </div>
+        <div className="notes-line-item">
+          <span className="notes-bullet">✦</span>
+          <span>Asymptotic bounds & Big-O cheatsheet</span>
+        </div>
+      </div>
+    ),
+  },
+  {
+    id: 'pyq',
+    pageNumber: '02',
+    indicator: '02 / 03',
+    category: 'PREVIOUS YEAR PAPERS',
+    title: 'Practice with PYQs',
+    subject: 'Cloud Computing · End Term 2025',
+    supporting: 'Prepare smarter for your examinations.',
+    footerTag: '✓ Solved & answer key included',
+    tone: 'gold',
+    renderBody: () => (
+      <div className="showcase-pyq-content">
+        <div className="showcase-exam-strip">
+          <span>END TERM EXAM · 3 HOURS</span>
+          <span>100 MARKS</span>
+        </div>
+        <div className="showcase-exam-questions">
+          <div className="exam-question-item">
+            <strong className="exam-q-tag">Q1.</strong>
+            <span>Explain CAP theorem and distributed consensus algorithms.</span>
+          </div>
+          <div className="exam-question-item">
+            <strong className="exam-q-tag">Q2.</strong>
+            <span>Compare serverless event triggers vs microservice containers.</span>
+          </div>
+        </div>
+      </div>
+    ),
+  },
+  {
+    id: 'resources',
+    pageNumber: '03',
+    indicator: '03 / 03',
+    category: 'STUDY RESOURCES',
+    title: 'Resources for Every Semester',
+    subject: 'PDF · Learning Materials · All Semesters',
+    supporting: 'Discover useful resources from your community.',
+    footerTag: '✓ 100% Free community access',
+    tone: 'mint',
+    renderBody: () => (
+      <div className="showcase-resources-list">
+        <div className="res-pill-item">
+          <span className="pdf-badge-mini">PDF</span>
+          <span>Lab Manuals & Code Templates</span>
+        </div>
+        <div className="res-pill-item">
+          <span className="pdf-badge-mini">PDF</span>
+          <span>Standard Reference Textbooks</span>
+        </div>
+        <div className="res-pill-item">
+          <span className="pdf-badge-mini">PDF</span>
+          <span>Midterm Assignment Solution Sets</span>
+        </div>
+      </div>
+    ),
+  },
+]
+
+function AcademicResourceShowcase() {
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [isTransitioning, setIsTransitioning] = useState(false)
+  const [captionIndicator, setCaptionIndicator] = useState('01 / 03')
+  const [isPaused, setIsPaused] = useState(false)
+  const indexRef = useRef(0)
+  const isPausedRef = useRef(false)
+  const cycleTimeoutRef = useRef(null)
+  const settleTimeoutRef = useRef(null)
+
+  useEffect(() => {
+    isPausedRef.current = isPaused
+  }, [isPaused])
+
+  const triggerTransitionTo = useCallback((targetIdx) => {
+    setIsTransitioning(true)
+    setCaptionIndicator(SHOWCASE_CARDS[targetIdx].indicator)
+
+    settleTimeoutRef.current = setTimeout(() => {
+      indexRef.current = targetIdx
+      setActiveIndex(targetIdx)
+      setIsTransitioning(false)
+    }, 820)
+  }, [])
+
+  useEffect(() => {
+    const prefersReducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    if (prefersReducedMotion) return
+
+    let isMounted = true
+
+    const scheduleNext = () => {
+      cycleTimeoutRef.current = setTimeout(() => {
+        if (!isMounted) return
+        if (!isPausedRef.current) {
+          const nextIdx = (indexRef.current + 1) % SHOWCASE_CARDS.length
+          triggerTransitionTo(nextIdx)
+          settleTimeoutRef.current = setTimeout(() => {
+            if (!isMounted) return
+            scheduleNext()
+          }, 820)
+        } else {
+          // While paused, check again after 1 second
+          scheduleNext()
+        }
+      }, 2800)
+    }
+
+    scheduleNext()
+
+    return () => {
+      isMounted = false
+      if (cycleTimeoutRef.current) clearTimeout(cycleTimeoutRef.current)
+      if (settleTimeoutRef.current) clearTimeout(settleTimeoutRef.current)
+    }
+  }, [triggerTransitionTo])
+
+  const handleDotClick = (idx) => {
+    if (idx === indexRef.current || isTransitioning) return
+    if (cycleTimeoutRef.current) clearTimeout(cycleTimeoutRef.current)
+    if (settleTimeoutRef.current) clearTimeout(settleTimeoutRef.current)
+    triggerTransitionTo(idx)
+  }
+
+  return (
+    <div
+      className="hero-art hero-anim-art"
+      aria-label="Interactive layered showcase of notes, question papers, and study resources"
+      onMouseEnter={() => setIsPaused(true)}
+      onMouseLeave={() => setIsPaused(false)}
+      onFocusCapture={() => setIsPaused(true)}
+      onBlurCapture={() => setIsPaused(false)}
+    >
+      <div className="sun"></div>
+      <div className="showcase-deck">
+        {SHOWCASE_CARDS.map((card, i) => {
+          const slot = (i - activeIndex + SHOWCASE_CARDS.length) % SHOWCASE_CARDS.length
+          let slotClass = ''
+          if (slot === 0) slotClass = isTransitioning ? 'slot-front anim-exit-to-back' : 'slot-front'
+          else if (slot === 1) slotClass = isTransitioning ? 'slot-middle anim-to-front' : 'slot-middle'
+          else if (slot === 2) slotClass = isTransitioning ? 'slot-back anim-to-middle' : 'slot-back'
+
+          return (
+            <article
+              key={card.id}
+              className={`showcase-card ${slotClass}`}
+              aria-hidden={slot !== 0}
+            >
+              <div className="showcase-card-header">
+                <span className={`showcase-category-badge badge-${card.tone}`}>
+                  {card.category}
+                </span>
+                <span className="showcase-card-num">{card.pageNumber}</span>
+              </div>
+
+              <h3 className="showcase-card-title">{card.title}</h3>
+              <div className="showcase-card-subject">{card.subject}</div>
+
+              <div className="showcase-card-body">{card.renderBody()}</div>
+
+              <p className="showcase-card-supporting">{card.supporting}</p>
+
+              <div className="showcase-card-footer">
+                <span>{card.footerTag}</span>
+              </div>
+            </article>
+          )
+        })}
+      </div>
+
+      <div className="showcase-dots" role="tablist" aria-label="Showcase categories">
+        {SHOWCASE_CARDS.map((c, idx) => {
+          const isSelected =
+            idx === (isTransitioning ? (activeIndex + 1) % SHOWCASE_CARDS.length : activeIndex)
+          return (
+            <button
+              key={c.id}
+              type="button"
+              role="tab"
+              aria-selected={isSelected}
+              aria-label={`Switch to ${c.category}`}
+              className={`showcase-dot ${isSelected ? 'active' : ''}`}
+              onClick={() => handleDotClick(idx)}
+            />
+          )
+        })}
+      </div>
+
+      <div className="art-caption">
+        OPEN KNOWLEDGE<br />
+        <strong>{captionIndicator}</strong>
+      </div>
+    </div>
   )
 }
 
 function Home({ onNavigate }) {
+  const homeRef = useRef(null)
+
+  useEffect(() => {
+    if (typeof IntersectionObserver === 'undefined') return
+    const container = homeRef.current
+    if (!container) return
+
+    const sections = container.querySelectorAll('.reveal-section')
+    if (!sections.length) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('is-revealed')
+            observer.unobserve(entry.target)
+          }
+        })
+      },
+      { threshold: 0.12, rootMargin: '0px 0px -40px 0px' }
+    )
+
+    sections.forEach((sec) => observer.observe(sec))
+
+    const fallbackTimer = setTimeout(() => {
+      sections.forEach((sec) => sec.classList.add('is-revealed'))
+    }, 2000)
+
+    return () => {
+      clearTimeout(fallbackTimer)
+      observer.disconnect()
+    }
+  }, [])
+
   return (
-    <main>
+    <main ref={homeRef}>
       <section className="hero-section">
         <div className="hero-copy">
-          <p className="eyebrow">A community resource for curious minds</p>
-          <h1>Your university.<br /><em>Your notes.</em><br />Your community.</h1>
-          <p className="hero-text">A focused space for notes, question papers and the people who make learning here more generous.</p>
-          <div className="hero-actions">
-            <button className="primary-button" onClick={() => onNavigate('/resources')}>Explore resources <span>↗</span></button>
-            <button className="secondary-button" onClick={() => onNavigate('/contributors')}>Meet contributors <span>→</span></button>
+          <p className="eyebrow hero-anim-eyebrow">A community resource for curious minds</p>
+          <h1 className="hero-title">
+            <span className="hero-title-line hero-title-line-1">Your university.</span>
+            <span className="hero-title-line hero-title-line-2"><em>Your notes.</em></span>
+            <span className="hero-title-line hero-title-line-3">Your community.</span>
+          </h1>
+          <p className="hero-text hero-anim-text">
+            A focused space for notes, question papers and the people who make learning here more
+            generous.
+          </p>
+          <div className="hero-actions hero-anim-actions">
+            <button className="primary-button" onClick={() => onNavigate('/resources')}>
+              Explore resources <span>↗</span>
+            </button>
+            <button className="secondary-button" onClick={() => onNavigate('/contributors')}>
+              Meet contributors <span>→</span>
+            </button>
           </div>
-          <div className="hero-proof">
-            <span className="proof-avatars"><Avatar initials="AV" tone="gold" /><Avatar initials="SA" tone="violet" /><Avatar initials="DP" tone="mint" /></span>
-            <span><strong>43 students</strong><br />sharing knowledge this month</span>
+          <div className="hero-proof hero-anim-proof">
+            <span className="proof-avatars">
+              <Avatar initials="AV" tone="gold" />
+              <Avatar initials="SA" tone="violet" />
+              <Avatar initials="DP" tone="mint" />
+            </span>
+            <span>
+              <strong>43 students</strong><br />
+              sharing knowledge this month
+            </span>
           </div>
         </div>
-        <div className="hero-art" aria-label="Abstract illustration of shared study notes">
-          <div className="sun"></div>
-          <div className="paper paper-back"><span>SEM 03</span><i></i><i></i></div>
-          <div className="paper paper-front"><span>Data Structures</span><b>01</b><i></i><i></i><i></i><small>community notes</small></div>
-          <div className="art-caption">OPEN KNOWLEDGE<br /><strong>01 / 03</strong></div>
+        <AcademicResourceShowcase />
+      </section>
+      <section className="intro-strip reveal-section">
+        <div>
+          <span className="section-number">01</span>
+          <h2>
+            Built around how<br />
+            <em>students actually study.</em>
+          </h2>
+        </div>
+        <p>
+          Find what you need by program, branch, semester or subject. Save a resource, share one
+          back, and leave the next student a clearer path.
+        </p>
+        <div className="intro-stat">
+          <strong>100%</strong>
+          <span>free to access</span>
         </div>
       </section>
-      <section className="intro-strip">
-        <div><span className="section-number">01</span><h2>Built around how<br /><em>students actually study.</em></h2></div>
-        <p>Find what you need by program, branch, semester or subject. Save a resource, share one back, and leave the next student a clearer path.</p>
-        <div className="intro-stat"><strong>100%</strong><span>free to access</span></div>
+      <section className="content-section reveal-section">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">The latest additions</p>
+            <h2>Recently shared</h2>
+          </div>
+          <button className="section-link" onClick={() => onNavigate('/resources')}>
+            View all resources <span>↗</span>
+          </button>
+        </div>
+        <div className="resource-grid">
+          {resources.map((resource, idx) => (
+            <HomeResourceCard
+              key={resource.title}
+              resource={resource}
+              onNavigate={onNavigate}
+              style={{ '--card-idx': idx }}
+            />
+          ))}
+        </div>
       </section>
-      <section className="content-section">
-        <div className="section-heading"><div><p className="eyebrow">The latest additions</p><h2>Recently shared</h2></div><button className="section-link" onClick={() => onNavigate('/resources')}>View all resources <span>↗</span></button></div>
-        <div className="resource-list">{resources.map((resource) => <ResourceRow key={resource.title} resource={resource} />)}</div>
+      <section className="contributors-section reveal-section">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">The people behind the library</p>
+            <h2>Top contributors</h2>
+          </div>
+          <button className="section-link" onClick={() => onNavigate('/contributors')}>
+            Meet everyone <span>↗</span>
+          </button>
+        </div>
+        <div className="contributor-grid">
+          {contributors.map((contributor, idx) => (
+            <ContributorCard
+              key={contributor.id}
+              contributor={contributor}
+              onNavigate={onNavigate}
+              style={{ '--card-idx': idx }}
+            />
+          ))}
+        </div>
       </section>
-      <section className="contributors-section">
-        <div className="section-heading"><div><p className="eyebrow">The people behind the library</p><h2>Top contributors</h2></div><button className="section-link" onClick={() => onNavigate('/contributors')}>Meet everyone <span>↗</span></button></div>
-        <div className="contributor-grid">{contributors.map((contributor) => <ContributorCard key={contributor.id} contributor={contributor} onNavigate={onNavigate} />)}</div>
-      </section>
-      <section className="developers-section">
-        <div className="section-heading"><div><p className="eyebrow">The makers of this space</p><h2>Developed by</h2></div><button className="section-link" onClick={() => onNavigate('/team')}>Meet the team <span>↗</span></button></div>
-        <div className="developer-grid">{developers.map((developer) => <DeveloperCard key={developer.name} developer={developer} />)}</div>
+      <section className="developers-section reveal-section">
+        <div className="section-heading">
+          <div>
+            <p className="eyebrow">The makers of this space</p>
+            <h2>Developed by</h2>
+          </div>
+          <button className="section-link" onClick={() => onNavigate('/team')}>
+            Meet the team <span>↗</span>
+          </button>
+        </div>
+        <div className="developer-grid">
+          {developers.map((developer, idx) => (
+            <DeveloperCard
+              key={developer.name}
+              developer={developer}
+              style={{ '--card-idx': idx }}
+            />
+          ))}
+        </div>
       </section>
     </main>
   )
@@ -313,7 +742,9 @@ function App() {
   return (
     <div className="app-shell">
       <Header onNavigate={navigate} />
-      {page}
+      <div className="page-transition-wrapper" key={path.split('/')[1] || 'root'}>
+        {page}
+      </div>
       <footer>
         <span className="brand-mark">US</span>
         <span>UniHub</span>
