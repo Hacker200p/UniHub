@@ -46,6 +46,8 @@ describe('File Storage & Upload Security Audit', () => {
       universityId,
       name: 'Storage Auditor Student',
       email: `audit.student.${Date.now()}@university.edu`,
+      universityEmail: `audit.student.${Date.now()}@silicon.ac.in`,
+      universityEmailVerifiedAt: new Date(),
       passwordHash: 'dummyHashForTesting123456',
       role: 'STUDENT',
       programId: testProgram._id,

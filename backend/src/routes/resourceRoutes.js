@@ -11,7 +11,7 @@ import {
   rejectResource,
   requestChangesResource,
 } from '../controllers/resourceController.js'
-import { requireAuth, requireRoles } from '../middleware/auth.js'
+import { requireAuth, requireRoles, requireUniversityEmail } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import { moderationSchema } from '../validators/resource.js'
 import { resourceCreateSchema } from '../validators/resource.js'
@@ -34,6 +34,7 @@ resourceRouter.post(
   '/resources/upload',
   uploadLimiter,
   requireAuth,
+  requireUniversityEmail,
   pdfUpload,
   validate(uploadMetadataSchema, 'body'),
   uploadResource,

@@ -58,6 +58,8 @@ describe('End-to-End Resource Lifecycle & Security Audit', () => {
       universityId,
       name: 'E2E Contributor Student',
       email: `e2e.student.${Date.now()}@university.edu`,
+      universityEmail: `e2e.student.${Date.now()}@silicon.ac.in`,
+      universityEmailVerifiedAt: new Date(),
       passwordHash: 'dummyHash123456',
       role: 'STUDENT',
       programId: testProgram._id,

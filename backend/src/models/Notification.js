@@ -11,6 +11,9 @@ const notificationSchema = new mongoose.Schema({
       'CHANGES_REQUESTED',
       'SUGGESTION_UPDATED',
       'REPORT_RESOLVED',
+      'REPORT_DISMISSED',
+      'REQUEST_REPLIED',
+      'REPORT_REPLIED',
       'SECURITY_ALERT',
       'SYSTEM_ANNOUNCEMENT',
     ],
@@ -19,6 +22,9 @@ const notificationSchema = new mongoose.Schema({
   title: { type: String, required: true, trim: true },
   message: { type: String, required: true, trim: true },
   resourceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Resource' },
+  requestId: { type: mongoose.Schema.Types.ObjectId, ref: 'ResourceRequest' },
+  suggestionId: { type: mongoose.Schema.Types.ObjectId, ref: 'Suggestion' },
+  reportId: { type: mongoose.Schema.Types.ObjectId, ref: 'Report' },
   readAt: { type: Date, default: null },
 }, { timestamps: true, versionKey: false })
 notificationSchema.index({ userId: 1, createdAt: -1 })

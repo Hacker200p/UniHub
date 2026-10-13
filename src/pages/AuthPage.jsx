@@ -57,11 +57,8 @@ export default function AuthPage({ mode = 'login', onNavigate }) {
     name: '',
     email: '',
     password: '',
-    confirmPassword: '',
-    programId: '',
   })
   const [showPassword, setShowPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [status, setStatus] = useState('idle')
   const [error, setError] = useState('')
   const [providers, setProviders] = useState({ google: false, github: false, microsoft: false })
@@ -112,19 +109,12 @@ export default function AuthPage({ mode = 'login', onNavigate }) {
     setStatus('loading')
     setError('')
 
-    if (isRegister && form.confirmPassword && form.password !== form.confirmPassword) {
-      setError('Passwords do not match.')
-      setStatus('idle')
-      return
-    }
-
     try {
       const session = isRegister
         ? await register({
             name: form.name,
             email: form.email,
             password: form.password,
-            programId: form.programId,
           })
         : await login({ email: form.email, password: form.password })
 
@@ -197,18 +187,18 @@ export default function AuthPage({ mode = 'login', onNavigate }) {
         <form onSubmit={submit}>
           {isRegister && (
             <label>
-              Name
+              Full Name
               <input
                 required
                 name="name"
+                autoComplete="name"
                 value={form.name}
                 onChange={(event) => setForm({ ...form, name: event.target.value })}
               />
             </label>
           )}
-
           <label>
-            University email
+            Email Address
             <input
               required
               name="email"
@@ -217,19 +207,6 @@ export default function AuthPage({ mode = 'login', onNavigate }) {
               onChange={(event) => setForm({ ...form, email: event.target.value })}
             />
           </label>
-
-          {isRegister && (
-            <label>
-              Program ID
-              <input
-                required
-                name="programId"
-                placeholder="Paste the program ID from the admin structure"
-                value={form.programId}
-                onChange={(event) => setForm({ ...form, programId: event.target.value })}
-              />
-            </label>
-          )}
 
           <label>
             Password
@@ -253,30 +230,6 @@ export default function AuthPage({ mode = 'login', onNavigate }) {
             </div>
           </label>
 
-          {isRegister && (
-            <label>
-              Confirm Password
-              <div className="password-input-wrap">
-                <input
-                  name="confirmPassword"
-                  minLength="12"
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  placeholder="Repeat your password"
-                  value={form.confirmPassword}
-                  onChange={(event) => setForm({ ...form, confirmPassword: event.target.value })}
-                />
-                <button
-                  type="button"
-                  className="password-toggle-btn"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
-                >
-                  {showConfirmPassword ? 'Hide' : 'Show'}
-                </button>
-              </div>
-            </label>
-          )}
-
           {error && (
             <div className="form-error" role="alert">
               {error}
@@ -288,6 +241,11 @@ export default function AuthPage({ mode = 'login', onNavigate }) {
             <span>↗</span>
           </button>
         </form>
+        {!isRegister && (
+          <button className="text-link auth-forgot-link" type="button" onClick={() => onNavigate('/forgot-password')}>
+            Forgot password?
+          </button>
+        )}
 
         {/* Social Register options */}
         {hasAnySocialProvider && isRegister && (

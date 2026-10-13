@@ -6,6 +6,9 @@
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "seed": "node src/seed.js",
+    "seed:admin": "node src/seedAdmin.js",
+    "cleanup:demo": "node src/cleanupDemoData.js",
+    "wipe:test-data": "node src/cleanupDemoData.js --wipe-all",
     "import:curriculum": "node src/importCurriculum.js",
     "test": "vitest run",
     "lint": "oxlint src test"

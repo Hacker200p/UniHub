@@ -13,6 +13,18 @@ import { validateAcademicHierarchy } from '../utils/academicValidation.js'
 const storageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../storage')
 
 export async function uploadResource(req, res) {
+  // University email verification is strictly required before uploading study materials
+  if (!req.user?.universityEmailVerifiedAt) {
+    throw new HttpError(
+      403,
+      'University email verification required before uploading study materials. Please verify your @silicon.ac.in email address.',
+      {
+        code: 'UNIVERSITY_EMAIL_VERIFICATION_REQUIRED',
+        requiresUniversityEmailVerification: true,
+      },
+    )
+  }
+
   const metadata = { ...req.body, academicYear: req.body.academicYear || undefined }
   await validateAcademicHierarchy({
     universityId: env.UNIVERSITY_ID,

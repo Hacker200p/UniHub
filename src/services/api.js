@@ -26,6 +26,14 @@ export const api = {
 
   // Social OAuth & Auth Providers
   getAuthProviders: () => request('/auth/providers'),
+  forgotPassword: (email) =>
+    request('/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),
+  verifyEmail: (token) =>
+    request('/auth/verify-email', { method: 'POST', body: JSON.stringify({ token }) }),
+  verifyResetOtp: (email, otp) =>
+    request('/auth/forgot-password/verify', { method: 'POST', body: JSON.stringify({ email, otp }) }),
+  resetPassword: (grant, password) =>
+    request('/auth/reset-password', { method: 'POST', body: JSON.stringify({ grant, password }) }),
   exchangeOAuthCode: (code) =>
     request('/auth/oauth/exchange', {
       method: 'POST',
@@ -78,6 +86,21 @@ export const api = {
   markNotificationsRead: (token) =>
     request('/user/notifications/read', { method: 'POST' }, token),
 
+  // University Email OTP Verification
+  getUniversityEmailStatus: (token) => request('/user/university-email/status', {}, token),
+  requestUniversityEmailOtp: (token, email) =>
+    request(
+      '/user/university-email/request-otp',
+      { method: 'POST', body: JSON.stringify({ email }) },
+      token,
+    ),
+  verifyUniversityEmailOtp: (token, email, otp) =>
+    request(
+      '/user/university-email/verify-otp',
+      { method: 'POST', body: JSON.stringify({ email, otp }) },
+      token,
+    ),
+
   // Upload endpoint
   uploadResource: async (token, formData) => {
     const response = await fetch(`${API_URL}/resources/upload`, {
@@ -86,7 +109,14 @@ export const api = {
       body: formData,
     })
     const payload = await response.json().catch(() => ({}))
-    if (!response.ok) throw new Error(payload.message || 'Upload failed')
+    if (!response.ok) {
+      const err = new Error(payload.message || 'Upload failed')
+      err.code = payload.code
+      err.requiresUniversityEmailVerification =
+        payload.requiresUniversityEmailVerification ||
+        payload.code === 'UNIVERSITY_EMAIL_VERIFICATION_REQUIRED'
+      throw err
+    }
     return payload.data
   },
 
@@ -96,10 +126,16 @@ export const api = {
     request('/requests', { method: 'POST', body: JSON.stringify(body) }, token),
   upvoteRequest: (token, id) =>
     request(`/requests/${id}/upvote`, { method: 'POST' }, token),
-  fulfillRequest: (token, id, resourceId) =>
+  fulfillRequest: (token, id, resourceId, reply = '') =>
     request(
       `/admin/requests/${id}/fulfill`,
-      { method: 'PATCH', body: JSON.stringify({ resourceId }) },
+      { method: 'PATCH', body: JSON.stringify({ resourceId, reply }) },
+      token,
+    ),
+  adminReplyRequest: (token, id, status, reply = '') =>
+    request(
+      `/admin/requests/${id}`,
+      { method: 'PATCH', body: JSON.stringify({ status, reply }) },
       token,
     ),
 
@@ -184,6 +220,8 @@ export const api = {
 
   // Suggestions & Reports Feedback
   listModerationFeedback: (token) => request('/admin/feedback', {}, token),
+  listAllSuggestions: (token, query = '') => request(`/admin/suggestions/all${query}`, {}, token),
+  listAllReports: (token, query = '') => request(`/admin/reports${query}`, {}, token),
   updateSuggestion: (token, id, status, reply = '') =>
     request(
       `/admin/suggestions/${id}`,
@@ -194,6 +232,18 @@ export const api = {
     request(
       `/admin/reports/${id}`,
       { method: 'PATCH', body: JSON.stringify({ status, reply }) },
+      token,
+    ),
+  resolveReport: (token, id, note = '') =>
+    request(
+      `/admin/reports/${id}/resolve`,
+      { method: 'POST', body: JSON.stringify({ note }) },
+      token,
+    ),
+  dismissReport: (token, id, reason = '') =>
+    request(
+      `/admin/reports/${id}/dismiss`,
+      { method: 'POST', body: JSON.stringify({ reason }) },
       token,
     ),
 }

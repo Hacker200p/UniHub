@@ -14,6 +14,9 @@ import {
   unlinkProvider,
   updatePrivacySettings,
   updateProfile,
+  getUniversityEmailStatus,
+  requestUniversityEmailOtp,
+  verifyUniversityEmailOtp,
 } from '../controllers/userController.js'
 import { requireAuth } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
@@ -22,6 +25,8 @@ import {
   profileUpdateSchema,
   setPasswordSchema,
   unlinkProviderSchema,
+  requestUniversityEmailOtpSchema,
+  verifyUniversityEmailOtpSchema,
 } from '../validators/auth.js'
 
 export const userRouter = Router()
@@ -30,6 +35,11 @@ userRouter.use(requireAuth)
 // Dashboard & Profile
 userRouter.get('/dashboard', dashboard)
 userRouter.patch('/profile', validate(profileUpdateSchema), updateProfile)
+
+// University Email Verification
+userRouter.get('/university-email/status', getUniversityEmailStatus)
+userRouter.post('/university-email/request-otp', validate(requestUniversityEmailOtpSchema), requestUniversityEmailOtp)
+userRouter.post('/university-email/verify-otp', validate(verifyUniversityEmailOtpSchema), verifyUniversityEmailOtp)
 
 // Security, Credentials & Account Linking
 userRouter.get('/security', getSecurityDetails)

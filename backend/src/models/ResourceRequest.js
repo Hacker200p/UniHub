@@ -12,6 +12,9 @@ const requestSchema = new mongoose.Schema({
   upvoterIds: { type: [mongoose.Schema.Types.ObjectId], default: [] },
   status: { type: String, enum: ['OPEN', 'FULFILLED', 'CLOSED'], default: 'OPEN', index: true },
   fulfilledResourceId: { type: mongoose.Schema.Types.ObjectId, ref: 'Resource' },
+  adminReply: { type: String, trim: true, maxlength: 2000, default: '' },
+  repliedAt: { type: Date, default: null },
+  repliedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
 }, { timestamps: true, versionKey: false })
 requestSchema.index({ universityId: 1, status: 1, createdAt: -1 })
 export const ResourceRequest = mongoose.model('ResourceRequest', requestSchema)

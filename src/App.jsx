@@ -1,20 +1,37 @@
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { Suspense, lazy, useEffect, useState, useRef, useCallback } from 'react'
 import './App.css'
-import ResourcesPage from './pages/ResourcesPage.jsx'
-import AuthPage from './pages/AuthPage.jsx'
-import DashboardPage from './pages/DashboardPage.jsx'
-import UploadPage from './pages/UploadPage.jsx'
-import { ContributorsDirectoryPage, TeamDirectoryPage } from './pages/CommunityPages.jsx'
-import AdminPage from './pages/AdminPage.jsx'
-import SavedResourcesPage from './pages/SavedResourcesPage.jsx'
-import ResourceDetailPage from './pages/ResourceDetailPage.jsx'
-import AcademicBrowserPage from './pages/AcademicBrowserPage.jsx'
-import RequestsPage from './pages/RequestsPage.jsx'
-import SettingsPage from './pages/SettingsPage.jsx'
-import OAuthCallbackPage from './pages/OAuthCallbackPage.jsx'
-import { AboutPage, ContactPage } from './pages/InfoPages.jsx'
 import { useTheme } from './context/useTheme.js'
 import { useAuth } from './context/useAuth.js'
+
+const ResourcesPage = lazy(() => import('./pages/ResourcesPage.jsx'))
+const AuthPage = lazy(() => import('./pages/AuthPage.jsx'))
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage.jsx'))
+const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage.jsx'))
+const DashboardPage = lazy(() => import('./pages/DashboardPage.jsx'))
+const UploadPage = lazy(() => import('./pages/UploadPage.jsx'))
+const AdminPageRoute = lazy(() => import('./pages/AdminPage.jsx'))
+const SavedResourcesPage = lazy(() => import('./pages/SavedResourcesPage.jsx'))
+const ResourceDetailPage = lazy(() => import('./pages/ResourceDetailPage.jsx'))
+const AcademicBrowserPage = lazy(() => import('./pages/AcademicBrowserPage.jsx'))
+const RequestsPage = lazy(() => import('./pages/RequestsPage.jsx'))
+const SettingsPage = lazy(() => import('./pages/SettingsPage.jsx'))
+const OAuthCallbackPage = lazy(() => import('./pages/OAuthCallbackPage.jsx'))
+const ContributorsDirectoryPage = lazy(async () => {
+  const mod = await import('./pages/CommunityPages.jsx')
+  return { default: mod.ContributorsDirectoryPage }
+})
+const TeamDirectoryPage = lazy(async () => {
+  const mod = await import('./pages/CommunityPages.jsx')
+  return { default: mod.TeamDirectoryPage }
+})
+const AboutPage = lazy(async () => {
+  const mod = await import('./pages/InfoPages.jsx')
+  return { default: mod.AboutPage }
+})
+const ContactPage = lazy(async () => {
+  const mod = await import('./pages/InfoPages.jsx')
+  return { default: mod.ContactPage }
+})
 
 const developers = [
   { name: 'Rahul Sharma', role: 'Full Stack Developer', initials: 'RS', description: 'Built the first version of UniHub for students who learn by sharing.', skills: ['React', 'Node.js', 'MongoDB'], website: 'https://rahulsharma.dev', github: 'https://github.com', linkedin: 'https://linkedin.com', tone: 'coral' },
@@ -56,6 +73,7 @@ function Header({ onNavigate }) {
   const { theme, toggleTheme } = useTheme()
   const { user, logout } = useAuth()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const menuRef = useRef(null)
 
   useEffect(() => {
@@ -68,99 +86,172 @@ function Header({ onNavigate }) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  useEffect(() => {
+    if (!mobileMenuOpen) return undefined
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setMobileMenuOpen(false)
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [mobileMenuOpen])
+
   const handleMenuNav = (targetPath) => {
     setMenuOpen(false)
+    setMobileMenuOpen(false)
     onNavigate(targetPath)
   }
 
   const handleSignOut = () => {
     setMenuOpen(false)
+    setMobileMenuOpen(false)
     logout()
     onNavigate('/')
   }
 
-  return (
-    <header className="site-header">
-      <button className="brand" onClick={() => onNavigate('/')} aria-label="UniHub home">
-        <img src="/logo.png" alt="UniHub Logo" className="brand-logo" /><span><strong>UniHub</strong></span>
-      </button>
-      <nav aria-label="Main navigation">
-        <button onClick={() => onNavigate('/contributors')}>Contributors</button>
-        <button onClick={() => onNavigate('/team')}>Developers</button>
-        <button onClick={() => onNavigate('/requests')}>Requests</button>
-        {user && ['ADMIN', 'MODERATOR'].includes(user.role) && (
-          <button className="nav-staff-link" onClick={() => onNavigate('/admin')}>Staff Workspace</button>
-        )}
-        {user ? (
-          <>
-            <button onClick={() => onNavigate('/dashboard')}>Dashboard</button>
-            <div className="nav-user-dropdown" ref={menuRef}>
-              <button
-                className="nav-user-avatar-btn"
-                onClick={() => setMenuOpen(!menuOpen)}
-                aria-expanded={menuOpen}
-                aria-label="User account menu"
-              >
-                <Avatar
-                  initials={user.name ? user.name.slice(0, 2).toUpperCase() : 'US'}
-                  src={user.avatarUrl}
-                  tone="blue"
-                  size="small"
-                />
-                <span className="nav-user-name">{user.name?.split(' ')[0] || 'Account'}</span>
-                <span className="dropdown-caret" aria-hidden="true">▾</span>
-              </button>
+  const navLinks = [
+    { label: 'Contributors', path: '/contributors' },
+    { label: 'Developers', path: '/team' },
+    { label: 'Requests', path: '/requests' },
+    ...(user && ['ADMIN', 'MODERATOR'].includes(user.role) ? [{ label: 'Staff Workspace', path: '/admin', accent: true }] : []),
+    ...(user ? [{ label: 'Dashboard', path: '/dashboard' }] : []),
+  ]
 
-              {menuOpen && (
-                <div className="dropdown-menu">
-                  <div className="dropdown-header">
-                    <strong>{user.name}</strong>
-                    <span className="dropdown-email">{user.email}</span>
-                    <span className="role-tag">{user.role}</span>
+  return (
+    <header className={`site-header ${mobileMenuOpen ? 'nav-open' : ''}`}>
+      <div className="site-header-inner">
+        <button className="brand" onClick={() => onNavigate('/')} aria-label="UniHub home">
+          <img src="/logo.png" alt="UniHub Logo" className="brand-logo" /><span><strong>UniHub</strong></span>
+        </button>
+
+        <nav className="nav-primary" aria-label="Main navigation">
+          {navLinks.map((item) => (
+            <button
+              key={item.label}
+              className={item.accent ? 'nav-staff-link' : ''}
+              onClick={() => onNavigate(item.path)}
+              type="button"
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="nav-utility">
+          {user ? (
+            <>
+              <button
+                className="header-notification-button"
+                onClick={() => onNavigate('/settings/notifications')}
+                aria-label="View notifications"
+                title="Notifications & Messages"
+                type="button"
+              >
+                <span aria-hidden="true">🔔</span>
+                <span className="notification-dot" aria-hidden="true" />
+              </button>
+              <div className="nav-user-dropdown" ref={menuRef}>
+                <button
+                  className="nav-user-avatar-btn"
+                  onClick={() => setMenuOpen(!menuOpen)}
+                  aria-expanded={menuOpen}
+                  aria-label="User account menu"
+                  type="button"
+                >
+                  <Avatar
+                    initials={user.name ? user.name.slice(0, 2).toUpperCase() : 'US'}
+                    src={user.avatarUrl}
+                    tone="blue"
+                    size="small"
+                  />
+                  <span className="nav-user-name">{user.name?.split(' ')[0] || 'Account'}</span>
+                  <span className="dropdown-caret" aria-hidden="true">▾</span>
+                </button>
+
+                {menuOpen && (
+                  <div className="dropdown-menu" role="menu" aria-label="User menu">
+                    <div className="dropdown-header">
+                      <strong>{user.name}</strong>
+                      <span className="dropdown-email">{user.email}</span>
+                      <span className="role-tag">{user.role}</span>
+                    </div>
+                    <div className="dropdown-divider"></div>
+                    <button type="button" onClick={() => handleMenuNav('/dashboard')}>📊 Dashboard</button>
+                    <button type="button" onClick={() => handleMenuNav('/upload')}>📤 Upload Resource</button>
+                    <button type="button" onClick={() => handleMenuNav('/bookmarks')}>🔖 Saved Resources</button>
+                    <div className="dropdown-divider"></div>
+                    <button type="button" onClick={() => handleMenuNav('/settings')}>👤 Profile Settings</button>
+                    <button type="button" onClick={() => handleMenuNav('/settings/security')}>🔒 Security & Accounts</button>
+                    <button type="button" onClick={() => handleMenuNav('/settings/sessions')}>📱 Active Sessions</button>
+                    <button type="button" onClick={() => handleMenuNav('/settings/privacy')}>🛡️ Privacy</button>
+                    <button type="button" onClick={() => handleMenuNav('/settings/notifications')}>🔔 Notifications</button>
+                    <div className="dropdown-divider"></div>
+                    <button type="button" className="dropdown-signout" onClick={handleSignOut}>🚪 Sign out</button>
                   </div>
-                  <div className="dropdown-divider"></div>
-                  <button onClick={() => handleMenuNav('/dashboard')}>📊 Dashboard</button>
-                  <button onClick={() => handleMenuNav('/upload')}>📤 Upload Resource</button>
-                  <button onClick={() => handleMenuNav('/bookmarks')}>🔖 Saved Resources</button>
-                  <div className="dropdown-divider"></div>
-                  <button onClick={() => handleMenuNav('/settings')}>👤 Profile Settings</button>
-                  <button onClick={() => handleMenuNav('/settings/security')}>🔒 Security & Accounts</button>
-                  <button onClick={() => handleMenuNav('/settings/sessions')}>📱 Active Sessions</button>
-                  <button onClick={() => handleMenuNav('/settings/privacy')}>🛡️ Privacy</button>
-                  <button onClick={() => handleMenuNav('/settings/notifications')}>🔔 Notifications</button>
-                  <div className="dropdown-divider"></div>
-                  <button className="dropdown-signout" onClick={handleSignOut}>🚪 Sign out</button>
-                </div>
-              )}
-            </div>
-            <button className="nav-signout-btn" onClick={handleSignOut}>Sign out</button>
-          </>
-        ) : (
-          <button className="nav-auth-btn" onClick={() => onNavigate('/login')}>Member Login</button>
-        )}
-        <button className="theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}>
-          {theme === 'light' ? (
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-            </svg>
+                )}
+              </div>
+              <button className="nav-signout-btn" onClick={handleSignOut} type="button">Sign out</button>
+            </>
           ) : (
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-              <circle cx="12" cy="12" r="5" />
-              <line x1="12" y1="1" x2="12" y2="3" />
-              <line x1="12" y1="21" x2="12" y2="23" />
-              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-              <line x1="1" y1="12" x2="3" y2="12" />
-              <line x1="21" y1="12" x2="23" y2="12" />
-              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-            </svg>
+            <button className="nav-auth-btn" onClick={() => onNavigate('/login')} type="button">Member Login</button>
           )}
+          <button className="theme-toggle" onClick={toggleTheme} aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} type="button">
+            {theme === 'light' ? (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+              </svg>
+            ) : (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="5" />
+                <line x1="12" y1="1" x2="12" y2="3" />
+                <line x1="12" y1="21" x2="12" y2="23" />
+                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                <line x1="1" y1="12" x2="3" y2="12" />
+                <line x1="21" y1="12" x2="23" y2="12" />
+                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+              </svg>
+            )}
+          </button>
+          <button className="nav-cta" onClick={() => onNavigate('/resources')} type="button">
+            Explore resources <span aria-hidden="true">↗</span>
+          </button>
+        </div>
+
+        <button
+          className="mobile-nav-toggle"
+          onClick={() => setMobileMenuOpen((open) => !open)}
+          aria-expanded={mobileMenuOpen}
+          aria-controls="site-mobile-navigation"
+          aria-label="Toggle navigation menu"
+          type="button"
+        >
+          <span aria-hidden="true">☰</span>
+          <span>Menu</span>
         </button>
-        <button className="nav-cta" onClick={() => onNavigate('/resources')}>
-          Explore resources <span aria-hidden="true">↗</span>
-        </button>
-      </nav>
+      </div>
+
+      {mobileMenuOpen && (
+        <div className="mobile-nav-panel" id="site-mobile-navigation" role="dialog" aria-modal="false" aria-label="Mobile navigation menu">
+          {navLinks.map((item) => (
+            <button key={item.label} type="button" className={item.accent ? 'nav-staff-link' : ''} onClick={() => handleMenuNav(item.path)}>
+              {item.label}
+            </button>
+          ))}
+          <button type="button" onClick={() => handleMenuNav('/resources')}>Explore resources</button>
+          {!user && <button type="button" onClick={() => handleMenuNav('/login')}>Member Login</button>}
+          {user && (
+            <>
+              <button type="button" onClick={() => handleMenuNav('/settings/notifications')}>Notifications</button>
+              <button type="button" onClick={handleSignOut}>Sign out</button>
+            </>
+          )}
+        </div>
+      )}
     </header>
   )
 }
@@ -674,6 +765,7 @@ function Home({ onNavigate }) {
 }
 
 function App() {
+  const { user } = useAuth()
   const [path, setPath] = useState(window.location.pathname)
 
   const navigate = useCallback((nextPath) => {
@@ -694,7 +786,7 @@ function App() {
 
   let page
   if (path.startsWith('/admin')) {
-    page = <AdminPage onNavigate={navigate} currentPath={path} />
+    page = <AdminPageRoute onNavigate={navigate} currentPath={path} />
   } else if (path === '/contributors' || contributorId) {
     page = <ContributorsDirectoryPage onNavigate={navigate} selectedId={contributorId} />
   } else if (resourceId) {
@@ -725,16 +817,33 @@ function App() {
     page = <SettingsPage activeTab="profile" onNavigate={navigate} />
   } else if (path === '/login') {
     page = <AuthPage onNavigate={navigate} />
+  } else if (path === '/forgot-password') {
+    page = <ForgotPasswordPage onNavigate={navigate} />
+  } else if (path === '/verify-email') {
+    page = <VerifyEmailPage onNavigate={navigate} />
   } else if (path === '/register') {
     page = <AuthPage mode="register" onNavigate={navigate} />
   } else if (path === '/dashboard') {
-    page = <DashboardPage onNavigate={navigate} />
+    page = user && ['ADMIN', 'MODERATOR'].includes(user.role)
+      ? <AdminPageRoute onNavigate={navigate} currentPath="/admin" />
+      : <DashboardPage onNavigate={navigate} />
   } else if (path === '/upload') {
     page = <UploadPage onNavigate={navigate} />
   } else if (path === '/bookmarks') {
     page = <SavedResourcesPage onNavigate={navigate} />
   } else if (path === '/recently-viewed') {
     page = <SavedResourcesPage mode="recent" onNavigate={navigate} />
+  } else if (path !== '/' && path !== '') {
+    page = (
+      <main className="directory-page">
+        <div className="directory-hero">
+          <p className="eyebrow">PAGE NOT FOUND</p>
+          <h1>This page is<br /><em>not available.</em></h1>
+          <p>The link may be outdated or the record may no longer be accessible.</p>
+          <button className="secondary-button" onClick={() => navigate('/')}>Back to UniHub →</button>
+        </div>
+      </main>
+    )
   } else {
     page = <Home onNavigate={navigate} />
   }
@@ -743,7 +852,17 @@ function App() {
     <div className="app-shell">
       <Header onNavigate={navigate} />
       <div className="page-transition-wrapper" key={path.split('/')[1] || 'root'}>
-        {page}
+        <Suspense fallback={(
+          <main className="directory-page">
+            <div className="directory-hero">
+              <p className="eyebrow">LOADING</p>
+              <h1>Preparing<br /><em>your workspace.</em></h1>
+              <p>Please wait while we fetch the latest University resources.</p>
+            </div>
+          </main>
+        )}>
+          {page}
+        </Suspense>
       </div>
       <footer>
         <span className="brand-mark">US</span>
@@ -757,4 +876,3 @@ function App() {
 }
 
 export default App
-

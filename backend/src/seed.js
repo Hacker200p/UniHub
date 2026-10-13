@@ -124,6 +124,13 @@ async function seed() {
     )
   }
 
+  // Demo records are opt-in so normal development seeding preserves real data.
+  if (process.env.SEED_DEMO_DATA !== 'true') {
+    await importCurriculum({ universityId, verbose: true })
+    console.log('Seed complete (demo records skipped)')
+    return
+  }
+
   // Seed sample public contributor
   const contributorUser = await upsert(
     User,

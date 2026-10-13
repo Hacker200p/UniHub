@@ -1,8 +1,9 @@
 import bcrypt from 'bcryptjs'
+import crypto from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import { User } from '../models/User.js'
 import { RefreshSession } from '../models/RefreshSession.js'
-import { Program, Branch, Semester } from '../models/Academic.js'
+import { Program } from '../models/Academic.js'
 import { Notification } from '../models/Notification.js'
 import { env } from '../config/env.js'
 import { successResponse } from '../utils/apiResponse.js'
@@ -57,42 +58,11 @@ async function issueNewRefreshSession(user, req) {
 }
 
 export async function register(req, res) {
-  const { name, password, programId, branchId, semesterId } = req.body
+  const { name, password } = req.body
   const email = normalizeEmail(req.body.email)
 
   if (env.AUTH_REQUIRE_UNIVERSITY_EMAIL && !validateUniversityDomain(email)) {
     throw new HttpError(400, 'Registration is restricted to authorized university email domains')
-  }
-
-  const program = await Program.findOne({
-    _id: programId,
-    universityId: env.UNIVERSITY_ID,
-    isActive: true,
-  })
-  if (!program) throw new HttpError(400, 'Invalid program')
-
-  if (
-    branchId &&
-    !(await Branch.exists({
-      _id: branchId,
-      programId: program._id,
-      universityId: env.UNIVERSITY_ID,
-      isActive: true,
-    }))
-  ) {
-    throw new HttpError(400, 'Branch does not belong to this program')
-  }
-
-  if (
-    semesterId &&
-    !(await Semester.exists({
-      _id: semesterId,
-      programId: program._id,
-      universityId: env.UNIVERSITY_ID,
-      isActive: true,
-    }))
-  ) {
-    throw new HttpError(400, 'Semester does not belong to this program')
   }
 
   if (await User.exists({ universityId: env.UNIVERSITY_ID, email })) {
@@ -106,9 +76,6 @@ export async function register(req, res) {
     name,
     email,
     passwordHash,
-    programId,
-    branchId,
-    semesterId,
     emailVerificationHash: hashToken(verificationToken),
     emailVerificationExpiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
   })
@@ -347,42 +314,88 @@ export async function verifyEmail(req, res) {
 
 export async function forgotPassword(req, res) {
   const email = normalizeEmail(req.body.email)
-  const user = await User.findOne({ universityId: env.UNIVERSITY_ID, email })
-  if (user) {
-    const token = createOpaqueToken()
-    user.resetPasswordHash = hashToken(token)
-    user.resetPasswordExpiresAt = new Date(Date.now() + 60 * 60 * 1000)
+  const user = await User.findOne({ universityId: env.UNIVERSITY_ID, email }).select('+passwordHash +resetPasswordOtpHash')
+  if (user?.passwordHash) {
+    const now = Date.now()
+    if (user.resetPasswordOtpSentAt && now - user.resetPasswordOtpSentAt.getTime() < 60 * 1000) {
+      return successResponse(res, null, 'If an account exists for that email address, a password reset code will be sent.')
+    }
+    const otp = crypto.randomInt(100000, 1000000).toString()
+    user.resetPasswordOtpHash = hashToken(otp)
+    user.resetPasswordOtpExpiresAt = new Date(now + 10 * 60 * 1000)
+    user.resetPasswordOtpAttempts = 0
+    user.resetPasswordOtpSentAt = new Date(now)
+    user.resetPasswordGrantHash = undefined
+    user.resetPasswordGrantExpiresAt = undefined
     await user.save()
-
     await sendLink({
       to: email,
-      subject: 'Reset your password',
-      text: `${env.CLIENT_URL}/reset-password?token=${token}`,
+      subject: 'UniHub — Your Password Reset Code',
+      text: `Your UniHub password reset code is ${otp}. It expires in 10 minutes and can be used once. If you did not request this, ignore this email.`,
     })
   }
+  return successResponse(res, null, 'If an account exists for that email address, a password reset code will be sent.')
+}
 
-  return successResponse(
-    res,
-    null,
-    'If an account exists with that email, a password reset link has been sent',
-  )
+export async function verifyResetOtp(req, res) {
+  const email = normalizeEmail(req.body.email)
+  const otpHash = hashToken(req.body.otp)
+  const challenge = await User.findOneAndUpdate(
+    {
+      universityId: env.UNIVERSITY_ID,
+      email,
+      resetPasswordOtpHash: { $exists: true },
+      resetPasswordOtpExpiresAt: { $gt: new Date() },
+      resetPasswordOtpAttempts: { $lt: 5 },
+    },
+    { $inc: { resetPasswordOtpAttempts: 1 } },
+    { new: true },
+  ).select('+resetPasswordOtpHash')
+  if (!challenge || challenge.resetPasswordOtpHash !== otpHash) {
+    throw new HttpError(400, 'Invalid or expired reset code')
+  }
+  const grant = createOpaqueToken()
+  const user = await User.findOneAndUpdate(
+    {
+      _id: challenge._id,
+      resetPasswordOtpHash: otpHash,
+      resetPasswordOtpAttempts: { $lte: 5 },
+    },
+    {
+      $set: {
+        resetPasswordGrantHash: hashToken(grant),
+        resetPasswordGrantExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      },
+      $unset: {
+        resetPasswordOtpHash: 1,
+        resetPasswordOtpExpiresAt: 1,
+      },
+    },
+    { new: true },
+  ).select('+resetPasswordOtpHash')
+  if (!user) throw new HttpError(400, 'Invalid or expired reset code')
+  return successResponse(res, { grant }, 'Reset code verified')
 }
 
 export async function resetPassword(req, res) {
-  const hash = hashToken(req.body.token)
+  const hash = hashToken(req.body.grant)
   const user = await User.findOne({
     universityId: env.UNIVERSITY_ID,
-    resetPasswordHash: hash,
-    resetPasswordExpiresAt: { $gt: new Date() },
-  })
+    resetPasswordGrantHash: hash,
+    resetPasswordGrantExpiresAt: { $gt: new Date() },
+  }).select('+resetPasswordGrantHash')
 
   if (!user) {
-    throw new HttpError(400, 'Invalid or expired reset token')
+    throw new HttpError(400, 'Invalid or expired reset grant')
   }
 
   user.passwordHash = await bcrypt.hash(req.body.password, 12)
   user.resetPasswordHash = undefined
   user.resetPasswordExpiresAt = undefined
+  user.resetPasswordGrantHash = undefined
+  user.resetPasswordGrantExpiresAt = undefined
+  user.resetPasswordOtpHash = undefined
+  user.resetPasswordOtpExpiresAt = undefined
   await user.save()
 
   await RefreshSession.updateMany(
@@ -742,4 +755,3 @@ export async function exchangeOAuthCode(req, res) {
     'Authentication exchange successful',
   )
 }
-

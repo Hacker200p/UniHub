@@ -495,6 +495,39 @@ export default function SettingsPage({ activeTab = 'profile', onNavigate }) {
                 {securityStatus.error && <p className="form-error">{securityStatus.error}</p>}
                 {securityStatus.success && <p className="success-message">{securityStatus.success}</p>}
 
+                {/* University Email Verification Status */}
+                <div className="security-section">
+                  <h3>University Email Verification</h3>
+                  <p className="muted">
+                    Required before uploading study resources to UniHub. Only eligible <code>@silicon.ac.in</code> addresses qualify.
+                  </p>
+                  <div className="provider-card">
+                    <div className="provider-info">
+                      <div className="provider-meta">
+                        <strong className="provider-name">Silicon University Email</strong>
+                        {securityData?.isUniversityEmailVerified || user?.isUniversityEmailVerified ? (
+                          <span className="linked-badge">
+                            ✓ University email verified ({securityData?.universityEmail || user?.universityEmail || '@silicon.ac.in'})
+                          </span>
+                        ) : (
+                          <span className="unlinked-badge">Not verified — Required for resource uploads</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="provider-actions">
+                      {!(securityData?.isUniversityEmailVerified || user?.isUniversityEmailVerified) && (
+                        <button
+                          type="button"
+                          className="connect-btn"
+                          onClick={() => onNavigate && onNavigate('/upload')}
+                        >
+                          Verify in Upload ↗
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 {/* Connected Social Accounts */}
                 <div className="security-section">
                   <h3>Connected Accounts</h3>

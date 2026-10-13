@@ -12,6 +12,8 @@ import { HttpError } from '../utils/httpError.js'
 import { recordAudit } from '../utils/audit.js'
 import { getRefreshCookie } from '../utils/refreshCookie.js'
 import { hashToken } from '../utils/tokens.js'
+import { isValidUniversityEmail, generateNumericOtp, hashOtp } from '../utils/universityEmail.js'
+import { sendOtpEmail } from '../services/mailer.js'
 
 const visibleResource = { universityId: env.UNIVERSITY_ID, status: 'APPROVED' }
 
@@ -27,6 +29,7 @@ export async function dashboard(req, res) {
     bookmarks,
     recentlyViewed,
     unreadNotifications,
+    notifications,
   ] = await Promise.all([
     Resource.countDocuments({
       universityId: env.UNIVERSITY_ID,
@@ -87,6 +90,13 @@ export async function dashboard(req, res) {
       userId: req.user._id,
       readAt: null,
     }),
+    Notification.find({
+      universityId: env.UNIVERSITY_ID,
+      userId: req.user._id,
+    })
+      .sort({ createdAt: -1 })
+      .limit(30)
+      .lean(),
   ])
 
   return successResponse(res, {
@@ -101,6 +111,10 @@ export async function dashboard(req, res) {
     },
     uploads,
     suggestions,
+    notifications: (notifications || []).map((item) => ({
+      ...item,
+      isRead: Boolean(item.readAt),
+    })),
     bookmarks: bookmarks.filter((item) => item.resourceId),
     recentlyViewed: recentlyViewed.filter((item) => item.resourceId),
   })
@@ -175,6 +189,9 @@ export async function getSecurityDetails(req, res) {
       linkedAt: p.linkedAt,
     })),
     activeSessionsCount,
+    universityEmail: user.universityEmail,
+    isUniversityEmailVerified: Boolean(user.universityEmailVerifiedAt),
+    universityEmailVerifiedAt: user.universityEmailVerifiedAt,
     privacySettings: user.privacySettings || {},
     publicProfile: user.publicProfile,
   })
@@ -459,4 +476,156 @@ export async function listRecentlyViewed(req, res) {
     .limit(20)
     .lean()
   return successResponse(res, viewed.filter((item) => item.resourceId))
+}
+
+// ==========================================
+// UNIVERSITY EMAIL OTP VERIFICATION
+// ==========================================
+
+export async function getUniversityEmailStatus(req, res) {
+  const user = await User.findById(req.user._id).select(
+    'email universityEmail universityEmailVerifiedAt',
+  )
+  if (!user) throw new HttpError(404, 'User not found')
+
+  const defaultUniEmail = isValidUniversityEmail(user.email) ? user.email : ''
+  const currentEmail = user.universityEmail || defaultUniEmail
+
+  return successResponse(res, {
+    universityEmail: currentEmail,
+    isVerified: Boolean(user.universityEmailVerifiedAt),
+    verifiedAt: user.universityEmailVerifiedAt || null,
+  })
+}
+
+export async function requestUniversityEmailOtp(req, res) {
+  const email = (req.body.email || '').trim().toLowerCase()
+
+  if (!isValidUniversityEmail(email)) {
+    throw new HttpError(400, 'Only @silicon.ac.in university email addresses are permitted')
+  }
+
+  const user = await User.findById(req.user._id).select(
+    '+universityEmailOtpHash +universityEmailOtpExpiresAt +universityEmailOtpAttempts +universityEmailOtpSentAt',
+  )
+  if (!user) throw new HttpError(404, 'User not found')
+
+  // Check resend cooldown: 60 seconds
+  const now = Date.now()
+  if (user.universityEmailOtpSentAt && now - user.universityEmailOtpSentAt.getTime() < 60000) {
+    const remaining = Math.ceil((60000 - (now - user.universityEmailOtpSentAt.getTime())) / 1000)
+    throw new HttpError(429, `Please wait ${remaining} seconds before requesting a new verification code`)
+  }
+
+  const otp = generateNumericOtp()
+  const otpHash = hashOtp(otp)
+  const expiresAt = new Date(now + 10 * 60 * 1000) // 10 minutes
+
+  // If changing university email address, invalidate previous verification
+  if (user.universityEmail && user.universityEmail !== email) {
+    user.universityEmailVerifiedAt = null
+  }
+
+  user.universityEmail = email
+  user.universityEmailOtpHash = otpHash
+  user.universityEmailOtpExpiresAt = expiresAt
+  user.universityEmailOtpAttempts = 0
+  user.universityEmailOtpSentAt = new Date(now)
+  await user.save()
+
+  // Send OTP email
+  const mailResult = await sendOtpEmail({
+    to: email,
+    recipientName: user.name,
+    otp,
+    expirationMinutes: 10,
+  })
+
+  await recordAudit({
+    actorId: user._id,
+    action: 'UNIVERSITY_EMAIL_OTP_REQUESTED',
+    entityType: 'User',
+    entityId: user._id,
+    metadata: {
+      universityEmail: email,
+      deliveryStatus: mailResult.success ? 'SENT' : 'FAILED',
+    },
+  })
+
+  return successResponse(res, {
+    message: 'Verification code sent to your university email address',
+    universityEmail: email,
+    cooldownSeconds: 60,
+    expiresInMinutes: 10,
+  })
+}
+
+export async function verifyUniversityEmailOtp(req, res) {
+  const email = (req.body.email || '').trim().toLowerCase()
+  const otp = (req.body.otp || '').trim()
+
+  if (!isValidUniversityEmail(email)) {
+    throw new HttpError(400, 'Only @silicon.ac.in university email addresses are permitted')
+  }
+
+  if (!/^\d{6}$/.test(otp)) {
+    throw new HttpError(400, 'Verification code must be exactly 6 digits')
+  }
+
+  const user = await User.findById(req.user._id).select(
+    '+universityEmailOtpHash +universityEmailOtpExpiresAt +universityEmailOtpAttempts',
+  )
+  if (!user) throw new HttpError(404, 'User not found')
+
+  if (!user.universityEmail || user.universityEmail !== email) {
+    throw new HttpError(400, 'Verification code was requested for a different email address')
+  }
+
+  if (!user.universityEmailOtpHash || !user.universityEmailOtpExpiresAt) {
+    throw new HttpError(400, 'No active verification code found. Please request a new code.')
+  }
+
+  if (user.universityEmailOtpExpiresAt <= new Date()) {
+    throw new HttpError(400, 'Verification code has expired. Please request a new code.')
+  }
+
+  if (user.universityEmailOtpAttempts >= 5) {
+    throw new HttpError(429, 'Too many failed verification attempts. Please request a new verification code.')
+  }
+
+  const incomingHash = hashOtp(otp)
+  if (incomingHash !== user.universityEmailOtpHash) {
+    user.universityEmailOtpAttempts = (user.universityEmailOtpAttempts || 0) + 1
+    await user.save()
+    const remaining = 5 - user.universityEmailOtpAttempts
+    throw new HttpError(
+      400,
+      remaining > 0
+        ? `Invalid verification code. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+        : 'Invalid verification code. Maximum attempts exceeded. Please request a new code.',
+    )
+  }
+
+  // Verification succeeded - single use
+  user.universityEmailVerifiedAt = new Date()
+  user.universityEmailOtpHash = undefined
+  user.universityEmailOtpExpiresAt = undefined
+  user.universityEmailOtpAttempts = 0
+  user.universityEmailOtpSentAt = undefined
+  await user.save()
+
+  await recordAudit({
+    actorId: user._id,
+    action: 'UNIVERSITY_EMAIL_VERIFIED',
+    entityType: 'User',
+    entityId: user._id,
+    metadata: { universityEmail: email },
+  })
+
+  return successResponse(res, {
+    message: 'University email verified successfully',
+    isVerified: true,
+    universityEmail: user.universityEmail,
+    verifiedAt: user.universityEmailVerifiedAt,
+  })
 }

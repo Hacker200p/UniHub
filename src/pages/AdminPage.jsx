@@ -30,12 +30,21 @@ function formatDateTime(dateStr) {
   }
 }
 
-function MetricCard({ label, value, note, color }) {
-  return (
-    <div className={`admin-metric-card ${color ? `metric-${color}` : ''}`}>
+function MetricCard({ label, value, note, color, onClick }) {
+  const content = (
+    <>
       <span className="metric-label">{label}</span>
       <strong className="metric-value">{value ?? '0'}</strong>
       {note && <span className="metric-note">{note}</span>}
+    </>
+  )
+  return onClick ? (
+    <button type="button" className={`admin-metric-card admin-metric-button ${color ? `metric-${color}` : ''}`} onClick={onClick}>
+      {content}
+    </button>
+  ) : (
+    <div className={`admin-metric-card ${color ? `metric-${color}` : ''}`}>
+      {content}
     </div>
   )
 }
@@ -65,7 +74,7 @@ function Modal({ title, onClose, children }) {
 }
 
 // 1. DASHBOARD VIEW
-function AdminDashboardView({ overview, onNavigateTab }) {
+function AdminDashboardView({ overview, onNavigateTab, currentUser }) {
   const stats = overview?.statistics || {}
   const activity = overview?.recentActivity || {}
 
@@ -73,8 +82,22 @@ function AdminDashboardView({ overview, onNavigateTab }) {
     <div className="admin-section-content">
       <div className="admin-header-row">
         <div>
-          <p className="eyebrow">PLATFORM HEALTH & METRICS</p>
-          <h2>System Overview</h2>
+          <p className="eyebrow">STAFF WORKSPACE</p>
+          <h2>Admin Workspace</h2>
+          <p className="admin-dashboard-subtitle">Monitor study resources, review reports, and manage the UniHub academic community.</p>
+        </div>
+        <div className="admin-dashboard-profile">
+          <div className="avatar avatar-blue avatar-small">
+            {currentUser?.avatarUrl ? (
+              <img src={currentUser.avatarUrl} alt="" className="avatar-img" />
+            ) : (
+              currentUser?.name?.slice(0, 2).toUpperCase() || 'AD'
+            )}
+          </div>
+          <div>
+            <strong>{currentUser?.name || 'Administrator'}</strong>
+            <span>{currentUser?.role === 'MODERATOR' ? 'Moderator' : 'Administrator'}</span>
+          </div>
         </div>
         <div className="admin-quick-actions">
           <button className="primary-button" onClick={() => onNavigateTab('uploads')}>
@@ -87,16 +110,17 @@ function AdminDashboardView({ overview, onNavigateTab }) {
       </div>
 
       <div className="admin-metrics-grid">
+        <MetricCard label="Pending Reviews" value={stats.pendingUploads} color="orange" note="Awaiting moderation" onClick={() => onNavigateTab('uploads')} />
+        <MetricCard label="Open Reports" value={stats.pendingReports} color="red" note="Needs investigation" onClick={() => onNavigateTab('reports')} />
+        <MetricCard label="Open Resource Requests" value={stats.openRequests} note="Awaiting response" onClick={() => onNavigateTab('requests')} />
+        <MetricCard label="Changes Requested" value={stats.changesRequestedResources} color="orange" note="Awaiting corrections" onClick={() => onNavigateTab('resources')} />
         <MetricCard label="Total Users" value={stats.totalUsers} note={`${stats.students || 0} students`} />
         <MetricCard label="Total Resources" value={stats.resources} note={`${stats.approvedResources || 0} approved`} />
-        <MetricCard label="Pending Uploads" value={stats.pendingUploads} color="orange" note="Awaiting moderation" />
         <MetricCard label="Approved Resources" value={stats.approvedResources} color="green" />
         <MetricCard label="Rejected Resources" value={stats.rejectedResources} />
         <MetricCard label="Total Contributors" value={stats.contributors} note="Active sharing" />
         <MetricCard label="Total Downloads" value={stats.downloads} color="blue" />
-        <MetricCard label="Pending Reports" value={stats.pendingReports} color="red" note="Needs investigation" />
         <MetricCard label="Pending Suggestions" value={stats.pendingSuggestions} note="Community ideas" />
-        <MetricCard label="Open Requests" value={stats.openRequests} note="Requested notes" />
       </div>
 
       <div className="admin-activity-grid">
@@ -475,6 +499,8 @@ function ResourceManagementView({ token, onReloadOverview }) {
   const [editForm, setEditForm] = useState({})
   const [deleteModal, setDeleteModal] = useState(null)
   const [deleteReason, setDeleteReason] = useState('')
+  const [changesModal, setChangesModal] = useState(null)
+  const [changesMessage, setChangesMessage] = useState('')
   const [busy, setBusy] = useState(false)
 
   const fetchResources = useCallback(async () => {
@@ -541,6 +567,23 @@ function ResourceManagementView({ token, onReloadOverview }) {
       onReloadOverview?.()
     } catch (err) {
       alert(`Delete error: ${err.message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleChangesSubmit = async (e) => {
+    e.preventDefault()
+    if (!changesMessage.trim()) return
+    setBusy(true)
+    try {
+      await api.requestChangesResource(token, changesModal._id, changesMessage.trim())
+      setChangesModal(null)
+      setChangesMessage('')
+      await fetchResources()
+      onReloadOverview?.()
+    } catch (err) {
+      alert(`Request changes error: ${err.message}`)
     } finally {
       setBusy(false)
     }
@@ -642,6 +685,7 @@ function ResourceManagementView({ token, onReloadOverview }) {
                   <td><StatusBadge status={item.status} /></td>
                   <td>
                     <div className="admin-table-actions">
+                      <button className="action-btn preview-btn" onClick={() => { setChangesModal(item); setChangesMessage('') }}>Request Changes</button>
                       <button className="action-btn edit-btn" onClick={() => openEdit(item)}>Edit</button>
                       <button className="action-btn delete-btn" onClick={() => { setDeleteModal(item); setDeleteReason('') }}>Delete</button>
                     </div>
@@ -750,6 +794,34 @@ function ResourceManagementView({ token, onReloadOverview }) {
               <button type="button" className="secondary-button" onClick={() => setDeleteModal(null)}>Cancel</button>
               <button type="submit" className="action-btn delete-btn" disabled={busy}>
                 {busy ? 'Deleting...' : 'Confirm Delete'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Request Changes Modal */}
+      {changesModal && (
+        <Modal title={`Request Modifications: ${changesModal.title}`} onClose={() => setChangesModal(null)}>
+          <form onSubmit={handleChangesSubmit}>
+            <p style={{ marginBottom: 12 }}>
+              Send modification request to the author <strong>{changesModal.contributorId?.name || 'Contributor'}</strong> ({changesModal.contributorId?.email || 'email'}).
+              They will receive an in-app notification and an email detailing what to change.
+            </p>
+            <label>
+              Requested Modifications *
+              <textarea
+                required
+                rows={4}
+                value={changesMessage}
+                onChange={(e) => setChangesMessage(e.target.value)}
+                placeholder="Specify the exact revisions or corrections needed before approval..."
+              />
+            </label>
+            <div className="admin-modal-actions">
+              <button type="button" className="secondary-button" onClick={() => setChangesModal(null)}>Cancel</button>
+              <button type="submit" className="action-btn changes-btn" disabled={busy}>
+                {busy ? 'Sending...' : 'Send Request to Author'}
               </button>
             </div>
           </form>
@@ -1740,7 +1812,7 @@ function SuggestionsManagementView({ token, onReloadOverview }) {
   const [suggestions, setSuggestions] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [filterStatus, setFilterStatus] = useState('ALL')
+  const [filterStatus, setFilterStatus] = useState('ACTIVE')
   const [replyModal, setReplyModal] = useState(null)
   const [replyStatus, setReplyStatus] = useState('COMPLETED')
   const [replyText, setReplyText] = useState('')
@@ -1749,8 +1821,8 @@ function SuggestionsManagementView({ token, onReloadOverview }) {
   const loadFeedback = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await api.listModerationFeedback(token)
-      setSuggestions(res?.suggestions || [])
+      const data = await api.listAllSuggestions(token)
+      setSuggestions(Array.isArray(data) ? data : (data?.suggestions || []))
       setError('')
     } catch (err) {
       setError(err.message)
@@ -1764,6 +1836,8 @@ function SuggestionsManagementView({ token, onReloadOverview }) {
   }, [loadFeedback])
 
   const filtered = useMemo(() => {
+    if (filterStatus === 'ACTIVE') return suggestions.filter((s) => ['OPEN', 'ACCEPTED'].includes(s.status))
+    if (filterStatus === 'HISTORY') return suggestions.filter((s) => ['COMPLETED', 'REJECTED'].includes(s.status))
     if (filterStatus === 'ALL') return suggestions
     return suggestions.filter((s) => s.status === filterStatus)
   }, [suggestions, filterStatus])
@@ -1793,9 +1867,11 @@ function SuggestionsManagementView({ token, onReloadOverview }) {
         </div>
         <div className="admin-filter-group">
           <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+            <option value="ACTIVE">Active</option>
+            <option value="HISTORY">History</option>
             <option value="ALL">All Statuses</option>
             <option value="OPEN">Open</option>
-            <option value="IN_PROGRESS">In Progress</option>
+            <option value="ACCEPTED">Accepted / In Progress</option>
             <option value="COMPLETED">Completed</option>
             <option value="REJECTED">Rejected</option>
           </select>
@@ -1886,17 +1962,24 @@ function ReportsManagementView({ token, onReloadOverview }) {
   const [reports, setReports] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [filterStatus, setFilterStatus] = useState('ALL')
+  const [filterStatus, setFilterStatus] = useState('ACTIVE')
   const [replyModal, setReplyModal] = useState(null)
   const [replyStatus, setReplyStatus] = useState('RESOLVED')
   const [replyText, setReplyText] = useState('')
+  const [modalError, setModalError] = useState('')
   const [busy, setBusy] = useState(false)
 
   const loadReports = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await api.listModerationFeedback(token)
-      setReports(res?.reports || [])
+      let data = []
+      try {
+        data = await api.listAllReports(token)
+      } catch {
+        const res = await api.listModerationFeedback(token)
+        data = res?.reports || []
+      }
+      setReports(Array.isArray(data) ? data : (data?.reports || []))
       setError('')
     } catch (err) {
       setError(err.message)
@@ -1910,6 +1993,8 @@ function ReportsManagementView({ token, onReloadOverview }) {
   }, [loadReports])
 
   const filtered = useMemo(() => {
+    if (filterStatus === 'ACTIVE') return reports.filter((r) => ['OPEN', 'INVESTIGATING'].includes(r.status))
+    if (filterStatus === 'HISTORY') return reports.filter((r) => ['RESOLVED', 'DISMISSED'].includes(r.status))
     if (filterStatus === 'ALL') return reports
     return reports.filter((r) => r.status === filterStatus)
   }, [reports, filterStatus])
@@ -1917,6 +2002,7 @@ function ReportsManagementView({ token, onReloadOverview }) {
   const handleReplySubmit = async (e) => {
     e.preventDefault()
     setBusy(true)
+    setModalError('')
     try {
       await api.updateReport(token, replyModal._id, replyStatus, replyText)
       setReplyModal(null)
@@ -1924,7 +2010,7 @@ function ReportsManagementView({ token, onReloadOverview }) {
       await loadReports()
       onReloadOverview?.()
     } catch (err) {
-      alert(`Update error: ${err.message}`)
+      setModalError(err.message || 'Failed to update report')
     } finally {
       setBusy(false)
     }
@@ -1939,6 +2025,8 @@ function ReportsManagementView({ token, onReloadOverview }) {
         </div>
         <div className="admin-filter-group">
           <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+            <option value="ACTIVE">Active</option>
+            <option value="HISTORY">History</option>
             <option value="ALL">All Statuses</option>
             <option value="OPEN">Open</option>
             <option value="INVESTIGATING">Investigating</option>
@@ -1975,17 +2063,56 @@ function ReportsManagementView({ token, onReloadOverview }) {
                   <p>{item.adminReply}</p>
                 </div>
               )}
-              <div className="admin-card-footer mt-4">
+              {item.dismissalReason && (
+                <div className="admin-reply-box" style={{ background: '#fef2f2', borderColor: '#fca5a5' }}>
+                  <strong style={{ color: '#b91c1c' }}>Dismissal Reason (False Alarm):</strong>
+                  <p>{item.dismissalReason}</p>
+                </div>
+              )}
+              {item.resolutionNote && item.resolutionNote !== item.adminReply && (
+                <div className="admin-reply-box" style={{ background: '#f0fdf4', borderColor: '#86efac' }}>
+                  <strong style={{ color: '#15803d' }}>Resolution Note:</strong>
+                  <p>{item.resolutionNote}</p>
+                </div>
+              )}
+              <div className="admin-card-footer mt-4" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button
                   className="action-btn preview-btn"
                   onClick={() => {
                     setReplyModal(item)
-                    setReplyStatus(item.status === 'OPEN' ? 'RESOLVED' : item.status)
-                    setReplyText(item.adminReply || '')
+                    setReplyStatus(item.status)
+                    setReplyText(item.adminReply || item.moderatorReply || '')
+                    setModalError('')
                   }}
                 >
-                  Take Action / Resolve
+                  Manage / Respond
                 </button>
+                {item.status !== 'RESOLVED' && (
+                  <button
+                    className="action-btn approve-btn"
+                    onClick={() => {
+                      setReplyModal(item)
+                      setReplyStatus('RESOLVED')
+                      setReplyText(item.resolutionNote || item.adminReply || '')
+                      setModalError('')
+                    }}
+                  >
+                    Resolve
+                  </button>
+                )}
+                {item.status !== 'DISMISSED' && (
+                  <button
+                    className="action-btn reject-btn"
+                    onClick={() => {
+                      setReplyModal(item)
+                      setReplyStatus('DISMISSED')
+                      setReplyText(item.dismissalReason || item.adminReply || '')
+                      setModalError('')
+                    }}
+                  >
+                    Dismiss (False)
+                  </button>
+                )}
               </div>
             </div>
           ))}
@@ -1994,30 +2121,35 @@ function ReportsManagementView({ token, onReloadOverview }) {
 
       {/* Resolve / Reply Modal */}
       {replyModal && (
-        <Modal title={`Resolve Report on: ${replyModal.resourceId?.title || 'Resource'}`} onClose={() => setReplyModal(null)}>
+        <Modal title={`Manage Report: ${replyModal.resourceId?.title || 'Resource'}`} onClose={() => setReplyModal(null)}>
           <form onSubmit={handleReplySubmit}>
+            {modalError && <p className="form-error" style={{ marginBottom: 12 }}>{modalError}</p>}
+            <p style={{ marginBottom: 12, fontSize: 13, color: '#6b7280' }}>
+              Reported for <strong>{replyModal.reason}</strong> by {replyModal.userId?.name || 'Student'}.
+              Reports remain in the management interface across all status changes until explicitly resolved or marked as false alarm.
+            </p>
             <label>
-              Update Report Status *
+              Report Status *
               <select value={replyStatus} onChange={(e) => setReplyStatus(e.target.value)}>
-                <option value="OPEN">Open</option>
+                <option value="OPEN">Open (Awaiting action)</option>
                 <option value="INVESTIGATING">Under Investigation</option>
                 <option value="RESOLVED">Resolved</option>
-                <option value="DISMISSED">Dismissed (False alarm)</option>
+                <option value="DISMISSED">Dismissed (Mark as false alarm)</option>
               </select>
             </label>
             <label>
-              Moderator Action Notes / Reply
+              Moderator Action Notes / Reply (Sent to Reporter)
               <textarea
                 rows={4}
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
-                placeholder="Document actions taken (e.g. content reviewed, warnings issued)..."
+                placeholder="Document actions taken or explanation for reporter..."
               />
             </label>
             <div className="admin-modal-actions">
               <button type="button" className="secondary-button" onClick={() => setReplyModal(null)}>Cancel</button>
               <button type="submit" className="primary-button" disabled={busy}>
-                {busy ? 'Saving...' : 'Save Resolution'}
+                {busy ? 'Saving...' : 'Save & Update Report'}
               </button>
             </div>
           </form>
@@ -2035,6 +2167,11 @@ function ResourceRequestsView({ token, onReloadOverview }) {
   const [error, setError] = useState('')
   const [fulfillModal, setFulfillModal] = useState(null)
   const [selectedResourceId, setSelectedResourceId] = useState('')
+  const [fulfillReply, setFulfillReply] = useState('')
+  const [replyModal, setReplyModal] = useState(null)
+  const [replyStatus, setReplyStatus] = useState('OPEN')
+  const [replyText, setReplyText] = useState('')
+  const [modalError, setModalError] = useState('')
   const [busy, setBusy] = useState(false)
 
   const loadRequests = useCallback(async () => {
@@ -2063,13 +2200,31 @@ function ResourceRequestsView({ token, onReloadOverview }) {
     if (!selectedResourceId) return
     setBusy(true)
     try {
-      await api.fulfillRequest(token, fulfillModal._id, selectedResourceId)
+      await api.fulfillRequest(token, fulfillModal._id, selectedResourceId, fulfillReply)
       setFulfillModal(null)
       setSelectedResourceId('')
+      setFulfillReply('')
       await loadRequests()
       onReloadOverview?.()
     } catch (err) {
       alert(`Fulfill error: ${err.message}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleReplySubmit = async (e) => {
+    e.preventDefault()
+    setBusy(true)
+    setModalError('')
+    try {
+      await api.adminReplyRequest(token, replyModal._id, replyStatus, replyText)
+      setReplyModal(null)
+      setReplyText('')
+      await loadRequests()
+      onReloadOverview?.()
+    } catch (err) {
+      setModalError(err.message || 'Failed to update request')
     } finally {
       setBusy(false)
     }
@@ -2097,6 +2252,7 @@ function ResourceRequestsView({ token, onReloadOverview }) {
               <tr>
                 <th>Request Title</th>
                 <th>Academic Hierarchy</th>
+                <th>Requester</th>
                 <th>Upvotes</th>
                 <th>Date</th>
                 <th>Status</th>
@@ -2109,34 +2265,86 @@ function ResourceRequestsView({ token, onReloadOverview }) {
                   <td>
                     <strong>{r.title}</strong>
                     {r.description && <div className="muted">{r.description}</div>}
+                    {r.adminReply && (
+                      <div className="admin-reply-box" style={{ marginTop: 6, fontSize: 12 }}>
+                        <strong>Staff Reply:</strong> <span>{r.adminReply}</span>
+                      </div>
+                    )}
                   </td>
                   <td>
                     <div>{r.programId?.code || '-'} &gt; {r.branchId?.code || '-'}</div>
                     <div className="muted">Sem {r.semesterId?.number || '-'} • {r.subjectId?.name || 'Subject'}</div>
                   </td>
+                  <td>{r.creatorId?.name || 'Student'}</td>
                   <td><strong>▲ {r.upvotes ?? r.upvoterIds?.length ?? 0}</strong></td>
                   <td>{formatDate(r.createdAt)}</td>
                   <td><StatusBadge status={r.status} /></td>
                   <td>
-                    {r.status === 'OPEN' ? (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <button
-                        className="action-btn approve-btn"
+                        type="button"
+                        className="action-btn preview-btn"
                         onClick={() => {
-                          setFulfillModal(r)
-                          setSelectedResourceId(approvedResources[0]?._id || '')
+                          setReplyModal(r)
+                          setReplyStatus(r.status)
+                          setReplyText(r.adminReply || '')
                         }}
                       >
-                        Fulfill Request
+                        Respond / Status
                       </button>
-                    ) : (
-                      <span className="muted">Fulfilled ✓</span>
-                    )}
+                      {r.status === 'OPEN' && (
+                        <button
+                          type="button"
+                          className="action-btn approve-btn"
+                          onClick={() => {
+                            setFulfillModal(r)
+                            setSelectedResourceId(approvedResources[0]?._id || '')
+                            setFulfillReply('')
+                          }}
+                        >
+                          Fulfill
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Reply Modal */}
+      {replyModal && (
+        <Modal title={`Respond to Request: ${replyModal.title}`} onClose={() => setReplyModal(null)}>
+          <form onSubmit={handleReplySubmit}>
+            <label>
+              Update Status *
+              <select value={replyStatus} onChange={(e) => setReplyStatus(e.target.value)}>
+                <option value="OPEN">Open</option>
+                <option value="FULFILLED">Fulfilled</option>
+                <option value="CLOSED">Closed / Declined</option>
+              </select>
+            </label>
+            <label>
+              Staff Response Message (Sent to Requester in-app & by email)
+              <textarea
+                rows={4}
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                placeholder="Write an update to notify the student..."
+              />
+            </label>
+            <div className="admin-modal-actions">
+              <button type="button" className="secondary-button" onClick={() => setReplyModal(null)}>
+                Cancel
+              </button>
+              <button type="submit" className="primary-button" disabled={busy}>
+                {busy ? 'Saving...' : 'Send Response'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {/* Fulfill Modal */}
@@ -2158,6 +2366,15 @@ function ResourceRequestsView({ token, onReloadOverview }) {
                   </option>
                 ))}
               </select>
+            </label>
+            <label>
+              Optional Note / Staff Reply
+              <textarea
+                rows={3}
+                value={fulfillReply}
+                onChange={(e) => setFulfillReply(e.target.value)}
+                placeholder="e.g. Attached professor verified lecture slides."
+              />
             </label>
             <div className="admin-modal-actions">
               <button type="button" className="secondary-button" onClick={() => setFulfillModal(null)}>Cancel</button>
@@ -2695,7 +2912,7 @@ export default function AdminPage({ currentPath = '/admin', onNavigate }) {
         {error && <p className="form-error">{error}</p>}
 
         {activeTab === 'dashboard' && (
-          <AdminDashboardView overview={overview} onNavigateTab={navigateTab} />
+          <AdminDashboardView overview={overview} onNavigateTab={navigateTab} currentUser={user} />
         )}
         {activeTab === 'uploads' && (
           <PendingReviewsView

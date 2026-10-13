@@ -12,6 +12,7 @@ import {
   register,
   resetPassword,
   refresh,
+  verifyResetOtp,
   verifyEmail,
 } from '../controllers/authController.js'
 import { requireAuth } from '../middleware/auth.js'
@@ -21,6 +22,7 @@ import {
   loginSchema,
   registerSchema,
   resetPasswordSchema,
+  verifyResetOtpSchema,
   verifyEmailSchema,
 } from '../validators/auth.js'
 import rateLimit from 'express-rate-limit'
@@ -68,6 +70,7 @@ authRouter.post('/logout', logout)
 authRouter.post('/logout-all', requireAuth, logoutAll)
 authRouter.get('/me', requireAuth, me)
 authRouter.post('/forgot-password', authLimiter, validate(forgotPasswordSchema), forgotPassword)
+authRouter.post('/forgot-password/verify', authLimiter, validate(verifyResetOtpSchema), verifyResetOtp)
 authRouter.post('/reset-password', authLimiter, validate(resetPasswordSchema), resetPassword)
 authRouter.post('/refresh', refresh)
 authRouter.post('/verify-email', validate(verifyEmailSchema), verifyEmail)

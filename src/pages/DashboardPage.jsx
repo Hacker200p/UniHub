@@ -67,11 +67,8 @@ function Status({ value }) {
 }
 
 export default function DashboardPage({ onNavigate }) {
-  const { user, accessToken, updateProfile, logout } = useAuth()
+  const { user, accessToken } = useAuth()
   const [dashboard, setDashboard] = useState(null)
-  const [profile, setProfile] = useState(user || {})
-  const [profileMessage, setProfileMessage] = useState('')
-  const [profileError, setProfileError] = useState('')
 
   useEffect(() => {
     if (accessToken) {
@@ -106,25 +103,6 @@ export default function DashboardPage({ onNavigate }) {
     unreadNotifications: 0,
   }
 
-  const saveProfile = async (event) => {
-    event.preventDefault()
-    setProfileMessage('')
-    setProfileError('')
-    try {
-      await updateProfile({
-        name: profile.name,
-        bio: profile.bio,
-        avatarUrl: profile.avatarUrl,
-        githubUrl: profile.githubUrl,
-        linkedinUrl: profile.linkedinUrl,
-        publicProfile: profile.publicProfile,
-      })
-      setProfileMessage('Profile updated successfully.')
-    } catch (error) {
-      setProfileError(error.message)
-    }
-  }
-
   return (
     <main className="profile-page dashboard-page">
       <div className="dashboard-hero-card">
@@ -136,13 +114,16 @@ export default function DashboardPage({ onNavigate }) {
           )}
         </div>
         <div className="dashboard-hero-info">
-          <p className="eyebrow">STUDENT WORKSPACE</p>
-          <h1>{user.name}</h1>
+          <p className="eyebrow">YOUR UNI HUB</p>
+          <h1>Welcome back, {user.name}</h1>
           <div className="dashboard-hero-meta">
-            <span className="hero-email">{user.email}</span>
-            <span>•</span>
-            <span className="role-tag">{user.role}</span>
+            <span>Your resources, activity, and updates in one place.</span>
+            <span className="role-tag">{user.role === 'STUDENT' ? 'Student' : user.role}</span>
           </div>
+        </div>
+        <div className="dashboard-hero-actions">
+          <button className="primary-button" onClick={() => onNavigate('/upload')}>Upload Resource ↗</button>
+          <button className="secondary-button" onClick={() => onNavigate('/resources')}>Explore Resources</button>
         </div>
       </div>
 
@@ -156,14 +137,19 @@ export default function DashboardPage({ onNavigate }) {
           <span className="metric-subtext">Verified study materials</span>
         </div>
 
-        <div className="metric-card">
+        <button
+          type="button"
+          className="metric-card metric-card-action"
+          onClick={() => document.getElementById('dashboard-uploads')?.scrollIntoView({ behavior: 'smooth' })}
+          title="View your pending uploads"
+        >
           <div className="metric-header">
             <span className="metric-label">Pending Uploads</span>
             <span className="metric-icon" aria-hidden="true">⏳</span>
           </div>
           <strong className="metric-number">{stats.pendingContributions}</strong>
           <span className="metric-subtext">Under moderator review</span>
-        </div>
+        </button>
 
         <div className="metric-card">
           <div className="metric-header">
@@ -174,19 +160,39 @@ export default function DashboardPage({ onNavigate }) {
           <span className="metric-subtext">Peers helped on campus</span>
         </div>
 
-        <div className="metric-card">
+        <button
+          type="button"
+          className="metric-card metric-card-action"
+          onClick={() => {
+            const el = document.getElementById('dashboard-notifications')
+            if (el) el.scrollIntoView({ behavior: 'smooth' })
+            else onNavigate('/settings/notifications')
+          }}
+          style={{ cursor: 'pointer' }}
+          title="Click to view notifications and messages"
+        >
           <div className="metric-header">
             <span className="metric-label">Unread Notifications</span>
             <span className="metric-icon" aria-hidden="true">🔔</span>
           </div>
           <strong className="metric-number">{stats.unreadNotifications}</strong>
-          <span className="metric-subtext">Activity alerts</span>
-        </div>
+          <span className="metric-subtext">Click to view alerts →</span>
+        </button>
       </div>
 
       <div className="dashboard-actions">
         <button className="primary-button" onClick={() => onNavigate('/upload')}>
           Upload a resource ↗
+        </button>
+        <button
+          className="secondary-button"
+          onClick={() => {
+            const el = document.getElementById('dashboard-notifications')
+            if (el) el.scrollIntoView({ behavior: 'smooth' })
+            else onNavigate('/settings/notifications')
+          }}
+        >
+          🔔 Notifications & Messages ({stats.unreadNotifications})
         </button>
         <button className="secondary-button" onClick={() => onNavigate('/bookmarks')}>
           Saved resources ({stats.savedResources})
@@ -195,20 +201,101 @@ export default function DashboardPage({ onNavigate }) {
           Recently viewed →
         </button>
         <button className="secondary-button" onClick={() => onNavigate('/settings')}>
-          Account settings ⚙️
-        </button>
-        <button
-          className="text-link"
-          onClick={() => {
-            logout()
-            onNavigate('/')
-          }}
-        >
-          Log out workspace →
+          Profile settings →
         </button>
       </div>
 
-      <section className="dashboard-section">
+      {/* NOTIFICATIONS & MESSAGES SECTION */}
+      <section className="dashboard-section" id="dashboard-notifications">
+        <div className="section-heading">
+          <h2>Notifications & Messages</h2>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <span className="status-summary-pill">
+              {stats.unreadNotifications} unread
+            </span>
+            {dashboard?.notifications?.some((n) => !n.isRead) && (
+              <button
+                className="text-link"
+                onClick={async () => {
+                  try {
+                    await api.markNotificationsRead(accessToken)
+                    const updated = await api.getDashboard(accessToken)
+                    setDashboard(updated)
+                  } catch (e) {
+                    console.error(e)
+                  }
+                }}
+              >
+                Mark all as read ✓
+              </button>
+            )}
+          </div>
+        </div>
+
+        {dashboard?.notifications && dashboard.notifications.length > 0 ? (
+          <div className="notifications-list">
+            {dashboard.notifications.slice(0, 3).map((notif) => (
+              <article
+                key={notif._id}
+                className={`notification-item ${!notif.isRead ? 'unread' : ''}`}
+                style={{
+                  background: notif.type === 'CHANGES_REQUESTED' ? '#fffbeb' : notif.type === 'REPORT_DISMISSED' ? '#fef2f2' : undefined,
+                  borderColor: notif.type === 'CHANGES_REQUESTED' ? '#fde68a' : notif.type === 'REPORT_DISMISSED' ? '#fecaca' : undefined,
+                }}
+              >
+                <div className="notification-meta">
+                  <span className={`notif-type ${notif.type === 'CHANGES_REQUESTED' ? 'notif-changes' : ''}`}>
+                    {notif.type?.replace(/_/g, ' ')}
+                  </span>
+                  <span className="muted">{new Date(notif.createdAt).toLocaleString()}</span>
+                </div>
+                <h3>{notif.title}</h3>
+                <p style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{notif.message}</p>
+                <div style={{ marginTop: 10, display: 'flex', gap: 12 }}>
+                  {notif.resourceId && !notif.reportId && (
+                    <button
+                      className="text-link"
+                      onClick={() => onNavigate(`/resources/${notif.resourceId._id || notif.resourceId}`)}
+                    >
+                      View Resource ↗
+                    </button>
+                  )}
+                  {notif.requestId && (
+                    <button
+                      className="text-link"
+                      onClick={() => onNavigate('/requests')}
+                    >
+                      View Requests ↗
+                    </button>
+                  )}
+                  {notif.reportId && (
+                    notif.resourceId ? (
+                      <button
+                        className="text-link"
+                        onClick={() => onNavigate(`/resources/${notif.resourceId._id || notif.resourceId}`)}
+                      >
+                        View reported resource ↗
+                      </button>
+                    ) : (
+                      <span className="muted">The reported record is no longer available.</span>
+                    )
+                  )}
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="dashboard-compact-empty notifications-empty">
+            <h3>No messages or notifications yet</h3>
+            <p>Updates from administrators will appear here.</p>
+          </div>
+        )}
+        {dashboard?.notifications?.length > 3 && (
+          <button className="panel-header-link" onClick={() => onNavigate('/settings/notifications')}>View all notifications →</button>
+        )}
+      </section>
+
+      <section className="dashboard-section" id="dashboard-uploads">
         <div className="section-heading">
           <h2>My uploads</h2>
           <span className="status-summary-pill">
@@ -230,20 +317,28 @@ export default function DashboardPage({ onNavigate }) {
                       </p>
                     </div>
                   </div>
+                  <button className="text-link" onClick={() => onNavigate(`/resources/${upload._id}`)}>View details →</button>
                   <Status value={upload.status} />
                   <span className="muted">{upload.downloadCount || 0} downloads</span>
-                  {upload.rejectionReason && <p className="form-error">{upload.rejectionReason}</p>}
                   {upload.requestedChanges && (
-                    <p className="form-error">Changes: {upload.requestedChanges}</p>
+                    <div className="upload-feedback-banner changes-banner" style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '10px 14px', marginTop: 8 }}>
+                      <strong style={{ color: '#b45309', display: 'block', marginBottom: 4 }}>⚠️ Administrator Requested Changes:</strong>
+                      <p style={{ margin: 0, color: '#92400e', fontSize: 13, whiteSpace: 'pre-wrap' }}>{upload.requestedChanges}</p>
+                    </div>
+                  )}
+                  {upload.rejectionReason && (
+                    <div className="upload-feedback-banner rejection-banner" style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, padding: '10px 14px', marginTop: 8 }}>
+                      <strong style={{ color: '#b91c1c', display: 'block', marginBottom: 4 }}>❌ Rejection Reason:</strong>
+                      <p style={{ margin: 0, color: '#991b1b', fontSize: 13, whiteSpace: 'pre-wrap' }}>{upload.rejectionReason}</p>
+                    </div>
                   )}
                 </article>
               ))
             ) : (
-              <div className="dashboard-empty-card">
-                <div className="empty-card-icon" aria-hidden="true">📄</div>
+              <div className="dashboard-compact-empty">
                 <h3>No resources uploaded yet</h3>
                 <p>
-                  Share class notes, past exam questions, or lab manuals to earn verified contributor badges and help your peers.
+                  Share notes, past exam questions, or lab materials with your university community.
                 </p>
                 <button className="primary-button" onClick={() => onNavigate('/upload')}>
                   Upload your first resource ↗
@@ -302,82 +397,18 @@ export default function DashboardPage({ onNavigate }) {
             ))}
           </div>
         ) : (
-          <div className="dashboard-empty-card suggestions-empty">
+          <div className="dashboard-compact-empty suggestions-empty">
             <p className="empty-panel-title">No suggestions submitted</p>
             <p className="empty-panel-desc">Have ideas to improve UniHub? Send curriculum or platform feedback anytime.</p>
           </div>
         )}
       </section>
 
-      <section className="dashboard-section profile-editor">
-        <h2>Profile information</h2>
-        <form className="settings-form" onSubmit={saveProfile}>
-          <div className="form-field">
-            <label htmlFor="dash-name">Display Name</label>
-            <input
-              id="dash-name"
-              value={profile.name || ''}
-              onChange={(event) => setProfile({ ...profile, name: event.target.value })}
-            />
-          </div>
-          <div className="form-field">
-            <label htmlFor="dash-avatar-url">Avatar Image URL</label>
-            <input
-              id="dash-avatar-url"
-              type="url"
-              placeholder="https://..."
-              value={profile.avatarUrl || ''}
-              onChange={(event) => setProfile({ ...profile, avatarUrl: event.target.value })}
-            />
-          </div>
-          <div className="form-field">
-            <label htmlFor="dash-bio">Short Bio</label>
-            <textarea
-              id="dash-bio"
-              rows="3"
-              placeholder="A few words about what you study or topics you are passionate about..."
-              value={profile.bio || ''}
-              onChange={(event) => setProfile({ ...profile, bio: event.target.value })}
-            />
-          </div>
-          <div className="form-row-2">
-            <div className="form-field">
-              <label htmlFor="dash-github">GitHub Profile URL</label>
-              <input
-                id="dash-github"
-                type="url"
-                placeholder="https://github.com/username"
-                value={profile.githubUrl || ''}
-                onChange={(event) => setProfile({ ...profile, githubUrl: event.target.value })}
-              />
-            </div>
-            <div className="form-field">
-              <label htmlFor="dash-linkedin">LinkedIn Profile URL</label>
-              <input
-                id="dash-linkedin"
-                type="url"
-                placeholder="https://linkedin.com/in/username"
-                value={profile.linkedinUrl || ''}
-                onChange={(event) => setProfile({ ...profile, linkedinUrl: event.target.value })}
-              />
-            </div>
-          </div>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              checked={profile.publicProfile !== false}
-              onChange={(event) => setProfile({ ...profile, publicProfile: event.target.checked })}
-            />
-            <span>Show my contributor profile publicly</span>
-          </label>
-          {profileError && <p className="form-error">{profileError}</p>}
-          {profileMessage && <p className="success-message">{profileMessage}</p>}
-          <div className="form-actions">
-            <button type="submit" className="primary-button">Save profile changes</button>
-          </div>
-        </form>
+      <section className="dashboard-section dashboard-settings-link">
+        <h2>Profile and account</h2>
+        <p>Update your display name, avatar, bio, public contributor profile, and connected links in Settings.</p>
+        <button className="secondary-button" onClick={() => onNavigate('/settings')}>Open Profile Settings →</button>
       </section>
     </main>
   )
 }
-

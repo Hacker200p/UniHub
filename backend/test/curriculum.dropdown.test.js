@@ -68,6 +68,8 @@ describe('Curriculum Import & Cascading Academic Dropdowns', () => {
       universityId: env.UNIVERSITY_ID,
       name: 'Curriculum Test Student',
       email: `curriculum.student.${Date.now()}@university.edu`,
+      universityEmail: `curriculum.student.${Date.now()}@silicon.ac.in`,
+      universityEmailVerifiedAt: new Date(),
       passwordHash: 'dummyHashForTestingCurriculum123456',
       role: 'STUDENT',
       programId: btechProgram._id,

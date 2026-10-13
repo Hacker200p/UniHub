@@ -3,10 +3,102 @@ import { useAuth } from '../context/useAuth.js'
 import { api } from '../services/api.js'
 
 export default function UploadPage({ onNavigate }) {
-  const { isAuthenticated, accessToken } = useAuth()
+  const { isAuthenticated, accessToken, user } = useAuth()
   const [submitted, setSubmitted] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  // University Email Verification State
+  const [isVerified, setIsVerified] = useState(Boolean(user?.isUniversityEmailVerified))
+  const [verifiedEmail, setVerifiedEmail] = useState(user?.universityEmail || '')
+  const [inputEmail, setInputEmail] = useState(() => {
+    if (user?.universityEmail) return user.universityEmail
+    if (user?.email && user.email.toLowerCase().endsWith('@silicon.ac.in')) return user.email
+    return ''
+  })
+  const [otpCode, setOtpCode] = useState('')
+  const [otpSent, setOtpSent] = useState(false)
+  const [otpLoading, setOtpLoading] = useState(false)
+  const [otpVerifying, setOtpVerifying] = useState(false)
+  const [otpError, setOtpError] = useState('')
+  const [otpSuccess, setOtpSuccess] = useState('')
+  const [resendCooldown, setResendCooldown] = useState(0)
+
+  // Check verification status from authoritative backend endpoint
+  useEffect(() => {
+    if (!isAuthenticated || !accessToken) return
+    let active = true
+    api
+      .getUniversityEmailStatus(accessToken)
+      .then((res) => {
+        if (!active) return
+        if (res?.isVerified) {
+          setIsVerified(true)
+          setVerifiedEmail(res.universityEmail || '')
+        } else {
+          setIsVerified(false)
+          if (res?.universityEmail) setInputEmail(res.universityEmail)
+        }
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [isAuthenticated, accessToken])
+
+  // Cooldown timer countdown
+  useEffect(() => {
+    if (resendCooldown <= 0) return
+    const timer = setInterval(() => {
+      setResendCooldown((prev) => (prev > 0 ? prev - 1 : 0))
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [resendCooldown])
+
+  const handleSendOtp = async (e) => {
+    e?.preventDefault?.()
+    setOtpError('')
+    setOtpSuccess('')
+    const trimmed = inputEmail.trim().toLowerCase()
+    if (!trimmed.endsWith('@silicon.ac.in')) {
+      setOtpError('University email must end with @silicon.ac.in')
+      return
+    }
+    setOtpLoading(true)
+    try {
+      const res = await api.requestUniversityEmailOtp(accessToken, trimmed)
+      setOtpSent(true)
+      setResendCooldown(res?.cooldownSeconds || 60)
+      setOtpSuccess(`Verification code sent to ${trimmed}. Check your inbox.`)
+    } catch (err) {
+      setOtpError(err.message || 'Failed to send verification code.')
+    } finally {
+      setOtpLoading(false)
+    }
+  }
+
+  const handleVerifyOtp = async (e) => {
+    e?.preventDefault?.()
+    setOtpError('')
+    setOtpSuccess('')
+    const trimmedEmail = inputEmail.trim().toLowerCase()
+    const trimmedOtp = otpCode.trim()
+    if (!trimmedOtp || trimmedOtp.length !== 6) {
+      setOtpError('Please enter the 6-digit verification code.')
+      return
+    }
+    setOtpVerifying(true)
+    try {
+      const res = await api.verifyUniversityEmailOtp(accessToken, trimmedEmail, trimmedOtp)
+      setIsVerified(true)
+      setVerifiedEmail(res?.universityEmail || trimmedEmail)
+      setOtpSuccess('University email verified successfully! You can now upload study materials.')
+    } catch (err) {
+      setOtpError(err.message || 'Invalid or expired verification code.')
+    } finally {
+      setOtpVerifying(false)
+    }
+  }
 
   // Academic Dropdown Data
   const [programs, setPrograms] = useState([])
@@ -219,6 +311,13 @@ export default function UploadPage({ onNavigate }) {
       return
     }
 
+    if (!isVerified) {
+      setError('Please verify your @silicon.ac.in university email before submitting your resource.')
+      const elem = document.getElementById('university-email-verification')
+      if (elem) elem.scrollIntoView({ behavior: 'smooth' })
+      return
+    }
+
     try {
       setSubmitting(true)
       const form = new FormData()
@@ -243,6 +342,11 @@ export default function UploadPage({ onNavigate }) {
       await api.uploadResource(accessToken, form)
       setSubmitted(true)
     } catch (submissionError) {
+      if (submissionError.requiresUniversityEmailVerification) {
+        setIsVerified(false)
+        const elem = document.getElementById('university-email-verification')
+        if (elem) elem.scrollIntoView({ behavior: 'smooth' })
+      }
       setError(submissionError.message || 'Resource submission failed. Please try again.')
     } finally {
       setSubmitting(false)
@@ -345,6 +449,107 @@ export default function UploadPage({ onNavigate }) {
       </div>
 
       <form className="upload-form enhanced-upload-form" onSubmit={handleSubmit}>
+        {/* Verification Status Banner or Verification Gate Panel */}
+        {isVerified ? (
+          <div className="university-verified-banner" role="status">
+            <span className="verify-icon">✓</span>
+            <div className="verify-meta">
+              <strong>University Email Verified</strong>
+              <p className="muted">
+                {verifiedEmail
+                  ? `Verified as ${verifiedEmail}`
+                  : 'Your @silicon.ac.in account is verified and eligible to upload study materials.'}
+              </p>
+            </div>
+            <span className="verified-status-tag">Ready to Contribute</span>
+          </div>
+        ) : (
+          <div className="university-verify-panel" id="university-email-verification">
+            <div className="verify-panel-header">
+              <span className="verify-badge-icon">✉</span>
+              <div>
+                <h3>Verify your university email</h3>
+                <p>
+                  Verify your <strong>@silicon.ac.in</strong> email address to start contributing study materials to UniHub.
+                </p>
+              </div>
+            </div>
+
+            {otpError && <p className="form-error" role="alert">{otpError}</p>}
+            {otpSuccess && <p className="success-message" role="status">{otpSuccess}</p>}
+
+            <div className="verify-flow-grid">
+              <div className="verify-step">
+                <label htmlFor="uni-email-input">
+                  University Email Address <span className="required-star">*</span>
+                </label>
+                <div className="verify-input-action-row">
+                  <input
+                    id="uni-email-input"
+                    type="email"
+                    value={inputEmail}
+                    onChange={(e) => {
+                      setInputEmail(e.target.value)
+                      setOtpError('')
+                    }}
+                    placeholder="student@silicon.ac.in"
+                    disabled={otpLoading || otpVerifying}
+                  />
+                  <button
+                    type="button"
+                    className="primary-button verify-btn"
+                    onClick={handleSendOtp}
+                    disabled={otpLoading || !inputEmail || resendCooldown > 0}
+                  >
+                    {otpLoading
+                      ? 'Sending code...'
+                      : resendCooldown > 0
+                        ? `Resend in ${resendCooldown}s`
+                        : otpSent
+                          ? 'Resend Code'
+                          : 'Send Verification Code'}
+                  </button>
+                </div>
+                <span className="field-hint">Must belong to domain <code>@silicon.ac.in</code></span>
+              </div>
+
+              {otpSent && (
+                <div className="verify-step verify-otp-step">
+                  <label htmlFor="otp-input">
+                    Enter 6-Digit Verification Code <span className="required-star">*</span>
+                  </label>
+                  <div className="verify-input-action-row">
+                    <input
+                      id="otp-input"
+                      type="text"
+                      maxLength={6}
+                      value={otpCode}
+                      onChange={(e) => {
+                        setOtpCode(e.target.value.replace(/\D/g, ''))
+                        setOtpError('')
+                      }}
+                      placeholder="123456"
+                      className="otp-code-input"
+                      disabled={otpVerifying}
+                    />
+                    <button
+                      type="button"
+                      className="primary-button verify-btn"
+                      onClick={handleVerifyOtp}
+                      disabled={otpVerifying || otpCode.length !== 6}
+                    >
+                      {otpVerifying ? 'Verifying...' : 'Verify Email ↗'}
+                    </button>
+                  </div>
+                  <span className="field-hint">
+                    Check your university email inbox (code is valid for 10 minutes)
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* SECTION 1: Resource Metadata */}
         <div className="form-section">
           <h2 className="section-title">1. Resource Information</h2>
@@ -680,9 +885,13 @@ export default function UploadPage({ onNavigate }) {
 
         <button
           className="primary-button submit-btn"
-          disabled={!isAcademicReady || !title.trim() || !pdfFile || submitting}
+          disabled={!isAcademicReady || !title.trim() || !pdfFile || submitting || !isVerified}
         >
-          {submitting ? 'Submitting for review...' : 'Submit for review'} <span>↗</span>
+          {!isVerified
+            ? 'Verify University Email to Submit'
+            : submitting
+              ? 'Submitting for review...'
+              : 'Submit for review ↗'}
         </button>
       </form>
     </main>
