@@ -134,7 +134,17 @@ npm run test:e2e
 
 ## Deployment
 
-Use MongoDB Atlas and an S3-compatible bucket for production. Set `STORAGE_PROVIDER=s3` and provide the storage variables from `backend/.env.example`.
+Use MongoDB Atlas and one or more private storage providers for production. Local disk remains the default for development. To enable S3-compatible storage (including Cloudflare R2 or Backblaze B2), add `s3` to `STORAGE_ENABLED_PROVIDERS`, set `STORAGE_DEFAULT_PROVIDER=s3`, and provide the bucket, endpoint, region, and credential placeholders from `backend/.env.example`. Existing `STORAGE_PROVIDER=s3` configurations remain supported.
+
+### Storage providers
+
+Each upload is assigned to one provider and stores its provider-specific identifier in the resource metadata. Files are streamed through the backend, so private S3 and Google Drive objects do not need public URLs.
+
+- **Local disk:** keep `STORAGE_ENABLED_PROVIDERS=local`; files are stored under `backend/storage`.
+- **S3-compatible:** set `STORAGE_ENABLED_PROVIDERS=local,s3` (or `s3`), `STORAGE_DEFAULT_PROVIDER=s3`, `STORAGE_BUCKET`, `STORAGE_REGION`, `STORAGE_ENDPOINT`, `STORAGE_ACCESS_KEY`, and `STORAGE_SECRET_KEY`. Use an endpoint such as the R2 or B2 S3 endpoint when required.
+- **Google Drive:** create a Google Cloud OAuth client with the Drive API enabled, generate an owner refresh token with Drive scope, then set `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, and `GOOGLE_DRIVE_REFRESH_TOKEN`. Add `google-drive` to `STORAGE_ENABLED_PROVIDERS`; optionally set `GOOGLE_DRIVE_FOLDER_ID` to a dedicated private folder. The refresh token stays in backend environment configuration and is never sent to students.
+
+Set `STORAGE_UPLOAD_POLICY=admin-selected` only when administrators or moderators should be allowed to choose among enabled providers. Otherwise uploads use `STORAGE_DEFAULT_PROVIDER`. Do not place provider credentials in frontend configuration or commit them.
 
 Before production:
 - Rotate all database, SMTP, OAuth, and JWT secrets.
@@ -143,11 +153,10 @@ Before production:
 - Restrict `CLIENT_URL` to your production HTTPS domain.
 
 ### Environment Variables
-Ensure all environment variables in `.env.example` are configured correctly. The frontend requires `VITE_API_URL` while the backend relies on variables like `MONGO_URI`, `JWT_SECRET`, `CLIENT_URL`, and `STORAGE_PROVIDER`.
+Ensure all environment variables in `.env.example` are configured correctly. The frontend requires `VITE_API_URL` while the backend relies on variables like `MONGO_URI`, `JWT_SECRET`, `CLIENT_URL`, and the storage settings described above.
 
 ### Free-tier Deployment Considerations
 - Storage: Use Cloudflare R2, AWS S3 Free Tier, or Supabase Storage for affordable or free S3-compatible object storage.
 - Database: MongoDB Atlas offers an M0 free cluster which is suitable for initial usage.
 - Backend Hosting: Render, Railway, or Fly.io offer free or low-cost tiers for Node.js backends. Note that instances may sleep on free tiers, causing slow cold starts.
 - Frontend Hosting: Vercel, Netlify, or Cloudflare Pages are ideal for hosting the static React frontend.
-

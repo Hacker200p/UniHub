@@ -10,8 +10,9 @@ import {
   pendingResources,
   rejectResource,
   requestChangesResource,
+  serveResourceFile,
 } from '../controllers/resourceController.js'
-import { requireAuth, requireRoles, requireUniversityEmail } from '../middleware/auth.js'
+import { optionalAuth, requireAuth, requireRoles, requireUniversityEmail } from '../middleware/auth.js'
 import { validate } from '../middleware/validate.js'
 import { moderationSchema } from '../validators/resource.js'
 import { resourceCreateSchema } from '../validators/resource.js'
@@ -40,6 +41,7 @@ resourceRouter.post(
   uploadResource,
 )
 resourceRouter.get('/resources/:id', getResource)
+resourceRouter.get('/resources/:id/file', optionalAuth, serveResourceFile)
 resourceRouter.post('/resources', requireAuth, validate(resourceCreateSchema), createResource)
 resourceRouter.post('/resources/:id/download', downloadResource)
 resourceRouter.get('/contributors', listContributors)

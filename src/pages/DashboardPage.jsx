@@ -36,7 +36,7 @@ function ResourceMiniList({ items, emptyTitle, emptyText, onNavigate }) {
             {resource.file?.url ? (
               <a
                 className="mini-card-action"
-                href={resource.file.url}
+                href={api.getResourceFileUrl(resource.file.url)}
                 target="_blank"
                 rel="noreferrer"
                 title="View document"

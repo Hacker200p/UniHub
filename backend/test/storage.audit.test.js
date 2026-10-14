@@ -1,4 +1,4 @@
-import { beforeAll, afterAll, describe, expect, it } from 'vitest'
+import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest'
 import request from 'supertest'
 import fs from 'node:fs/promises'
 import path from 'node:path'
@@ -168,7 +168,22 @@ describe('File Storage & Upload Security Audit', () => {
     expect(onDiskBuffer.equals(validPdfBuffer)).toBe(true)
   })
 
-  it('6. Rejects duplicate upload of identical file content (409 Conflict)', async () => {
+  it('6. Denies direct upload access when resource authorization lookup fails', async () => {
+    const fileName = `${'a'.repeat(64)}.pdf`
+    const filePath = path.resolve(process.cwd(), 'storage', fileName)
+    await fs.writeFile(filePath, Buffer.from('%PDF-1.4\n%%EOF'))
+    createdStorageKeys.push(fileName)
+
+    const findOne = vi.spyOn(Resource, 'findOne').mockRejectedValueOnce(new Error('database unavailable'))
+    const res = await request(app).get(`/uploads/${fileName}`)
+
+    expect(res.status).toBe(404)
+    expect(res.body.success).toBe(false)
+    expect(findOne).toHaveBeenCalled()
+    findOne.mockRestore()
+  })
+
+  it('7. Rejects duplicate upload of identical file content (409 Conflict)', async () => {
     const unique = `${Date.now()}-${Math.random()}`
     const duplicatePdf = Buffer.from(`%PDF-1.4\n% Deduplication test content ${unique}\n%%EOF`)
 

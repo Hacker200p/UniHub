@@ -19,12 +19,20 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
   SMTP_FROM: z.string().email().default('no-reply@university-study-hub.local'),
-  STORAGE_PROVIDER: z.enum(['local', 's3']).default('local'),
+  STORAGE_PROVIDER: z.enum(['local', 's3', 'google-drive']).default('local'),
+  STORAGE_ENABLED_PROVIDERS: z.string().default('local'),
+  STORAGE_DEFAULT_PROVIDER: z.enum(['local', 's3', 'google-drive']).optional(),
+  STORAGE_UPLOAD_POLICY: z.enum(['default', 'admin-selected']).default('default'),
   STORAGE_BUCKET: z.string().optional(),
   STORAGE_REGION: z.string().default('auto'),
   STORAGE_ENDPOINT: z.string().url().optional(),
   STORAGE_ACCESS_KEY: z.string().optional(),
   STORAGE_SECRET_KEY: z.string().optional(),
+  STORAGE_PUBLIC_BASE_URL: z.string().url().optional(),
+  GOOGLE_DRIVE_CLIENT_ID: z.string().optional(),
+  GOOGLE_DRIVE_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_DRIVE_REFRESH_TOKEN: z.string().optional(),
+  GOOGLE_DRIVE_FOLDER_ID: z.string().optional(),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(30),
@@ -56,6 +64,14 @@ if (!parsed.success) {
   throw new Error('Invalid environment configuration')
 }
 
+const requestedProviders = parsed.data.STORAGE_ENABLED_PROVIDERS
+  .split(',')
+  .map((provider) => provider.trim().toLowerCase())
+  .filter(Boolean)
+if (requestedProviders.some((provider) => !['local', 's3', 'google-drive'].includes(provider))) {
+  throw new Error('STORAGE_ENABLED_PROVIDERS contains an unsupported provider')
+}
+
 if (
   parsed.data.NODE_ENV === 'production' &&
   (!parsed.data.COOKIE_SECURE ||
@@ -65,3 +81,30 @@ if (
 }
 
 export const env = parsed.data
+
+const configuredProviders = new Set(
+  requestedProviders,
+)
+if (parsed.data.STORAGE_PROVIDER !== 'local') configuredProviders.add(parsed.data.STORAGE_PROVIDER)
+if (!configuredProviders.size) configuredProviders.add('local')
+
+const defaultProvider = parsed.data.STORAGE_DEFAULT_PROVIDER || (
+  parsed.data.STORAGE_PROVIDER !== 'local' ? parsed.data.STORAGE_PROVIDER : 'local'
+)
+export const storageConfig = {
+  enabledProviders: [...configuredProviders],
+  defaultProvider,
+  uploadPolicy: parsed.data.STORAGE_UPLOAD_POLICY,
+}
+
+for (const provider of configuredProviders) {
+  if (provider === 's3' && (!parsed.data.STORAGE_BUCKET || !parsed.data.STORAGE_ACCESS_KEY || !parsed.data.STORAGE_SECRET_KEY)) {
+    throw new Error('S3 storage is enabled but STORAGE_BUCKET, STORAGE_ACCESS_KEY, and STORAGE_SECRET_KEY are incomplete')
+  }
+  if (provider === 'google-drive' && (!parsed.data.GOOGLE_DRIVE_CLIENT_ID || !parsed.data.GOOGLE_DRIVE_CLIENT_SECRET || !parsed.data.GOOGLE_DRIVE_REFRESH_TOKEN)) {
+    throw new Error('Google Drive storage is enabled but its OAuth client and refresh-token settings are incomplete')
+  }
+}
+if (!configuredProviders.has(defaultProvider)) {
+  throw new Error('STORAGE_DEFAULT_PROVIDER must be one of STORAGE_ENABLED_PROVIDERS')
+}

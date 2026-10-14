@@ -35,41 +35,49 @@ app.use(
 
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin')
 
-    if (mongoose.connection.readyState === 1) {
-      try {
-        const resource = await Resource.findOne({
-          $or: [
-            { 'file.storageKey': fileName },
-            { 'file.url': req.originalUrl.split('?')[0] },
-            { 'file.url': `/uploads/${fileName}` },
-          ],
-        })
+    const notFound = () => res.status(404).json({
+      success: false,
+      message: `Route not found: ${req.method} ${req.originalUrl}`,
+    })
 
-        if (resource && resource.status !== 'APPROVED') {
-          const authHeader = req.get('authorization')
-          const rawToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : ''
-          if (rawToken) {
-            try {
-              const user = verifyAccessToken(rawToken)
-              if (
-                user.role === 'ADMIN' ||
-                user.role === 'MODERATOR' ||
-                (resource.contributorId && user.sub === resource.contributorId.toString())
-              ) {
-                return next()
-              }
-            } catch {
-              // Token verification failed
-            }
-          }
-          return res.status(404).json({
-            success: false,
-            message: `Route not found: ${req.method} ${req.originalUrl}`,
-          })
-        }
-      } catch {
-        // Fall back to next on database read error
+    if (mongoose.connection.readyState !== 1) {
+      return notFound()
+    }
+
+    try {
+      const resource = await Resource.findOne({
+        $or: [
+          { 'file.storageKey': fileName },
+          { 'file.url': req.originalUrl.split('?')[0] },
+          { 'file.url': `/uploads/${fileName}` },
+        ],
+      })
+
+      if (!resource) {
+        return notFound()
       }
+
+      if (resource.status !== 'APPROVED') {
+        const authHeader = req.get('authorization')
+        const rawToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : ''
+        if (rawToken) {
+          try {
+            const user = verifyAccessToken(rawToken)
+            if (
+              user.role === 'ADMIN' ||
+              user.role === 'MODERATOR' ||
+              (resource.contributorId && user.sub === resource.contributorId.toString())
+            ) {
+              return next()
+            }
+          } catch {
+            // Token verification failed
+          }
+        }
+        return notFound()
+      }
+    } catch {
+      return notFound()
     }
 
     next()

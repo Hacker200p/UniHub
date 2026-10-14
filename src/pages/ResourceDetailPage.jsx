@@ -53,9 +53,7 @@ export default function ResourceDetailPage({ id, onNavigate }) {
   const download = async () => {
     try {
       const result = await api.downloadResource(accessToken, id)
-      const downloadUrl = result.url?.startsWith('http')
-        ? result.url
-        : `${import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '') : 'http://localhost:4000'}${result.url}`
+      const downloadUrl = api.getResourceFileUrl(result.url)
       window.open(downloadUrl, '_blank', 'noopener,noreferrer')
       setMessage('Download recorded.')
     } catch (error) {
@@ -123,6 +121,9 @@ export default function ResourceDetailPage({ id, onNavigate }) {
             <div><span>Subject code</span><strong>{resource.subjectId?.code || '—'}</strong></div>
           </div>
           <p className="detail-description">{resource.description || 'This community resource has been reviewed by the platform team.'}</p>
+          <p className="detail-storage-notice">
+            Files are delivered securely through UniHub. The platform may use managed private storage providers to keep resources available.
+          </p>
           <div className="detail-actions">
             <button className="primary-button" onClick={download}>Download PDF ↗</button>
             <button className="secondary-button" onClick={toggleBookmark}>

@@ -124,7 +124,7 @@ function Header({ onNavigate }) {
     <header className={`site-header ${mobileMenuOpen ? 'nav-open' : ''}`}>
       <div className="site-header-inner">
         <button className="brand" onClick={() => onNavigate('/')} aria-label="UniHub home">
-          <img src="/logo.png" alt="UniHub Logo" className="brand-logo" /><span><strong>UniHub</strong></span>
+          <img src="/logo-128.png" alt="UniHub Logo" className="brand-logo" width="32" height="32" /><span><strong>UniHub</strong></span>
         </button>
 
         <nav className="nav-primary" aria-label="Main navigation">

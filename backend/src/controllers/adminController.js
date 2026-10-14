@@ -8,6 +8,7 @@ import { env } from '../config/env.js'
 import { successResponse } from '../utils/apiResponse.js'
 import { HttpError } from '../utils/httpError.js'
 import { recordAudit } from '../utils/audit.js'
+import { remove } from '../services/storageProvider.js'
 
 export async function overview(req, res) {
   const universityId = env.UNIVERSITY_ID
@@ -181,11 +182,14 @@ export async function updateAdminResource(req, res) {
 }
 
 export async function deleteAdminResource(req, res) {
-  const resource = await Resource.findOneAndDelete({
+  const resource = await Resource.findOne({
     _id: req.params.id,
     universityId: env.UNIVERSITY_ID,
   })
   if (!resource) throw new HttpError(404, 'Resource not found')
+
+  await remove(resource)
+  await Resource.deleteOne({ _id: resource._id })
 
   await recordAudit({
     actorId: req.user._id,

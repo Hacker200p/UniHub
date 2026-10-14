@@ -367,6 +367,7 @@ function PendingReviewsView({ token, onReloadOverview }) {
               <div><strong>Semester & Subject:</strong> Sem {previewItem.semesterId?.number} • {previewItem.subjectId?.name}</div>
               <div><strong>Type & Exam:</strong> {previewItem.resourceType} • {previewItem.examType || 'N/A'} • {previewItem.academicYear || 'N/A'}</div>
               <div><strong>File Name:</strong> {previewItem.file?.fileName || 'document.pdf'}</div>
+              <div><strong>Storage:</strong> {previewItem.file?.provider || 'local'}</div>
               <div><strong>Submitted Date:</strong> {formatDateTime(previewItem.createdAt)}</div>
             </div>
             {previewItem.description && (
@@ -382,7 +383,7 @@ function PendingReviewsView({ token, onReloadOverview }) {
                   className="primary-button"
                   onClick={async () => {
                     try {
-                      const res = await fetch(previewItem.file.url, {
+                      const res = await fetch(api.getResourceFileUrl(previewItem.file.url), {
                         headers: token ? { Authorization: `Bearer ${token}` } : {},
                       })
                       if (!res.ok) throw new Error('Failed to load document')
@@ -658,7 +659,7 @@ function ResourceManagementView({ token, onReloadOverview }) {
                         type="button"
                         onClick={async () => {
                           try {
-                            const res = await fetch(item.file.url, {
+                            const res = await fetch(api.getResourceFileUrl(item.file.url), {
                               headers: token ? { Authorization: `Bearer ${token}` } : {},
                             })
                             if (!res.ok) throw new Error('Failed to load document')

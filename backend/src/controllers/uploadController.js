@@ -1,16 +1,11 @@
 import crypto from 'node:crypto'
-import fs from 'node:fs/promises'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { Resource } from '../models/Resource.js'
 import { env } from '../config/env.js'
 import { successResponse } from '../utils/apiResponse.js'
 import { HttpError } from '../utils/httpError.js'
 import { slugify } from '../utils/slug.js'
-import { storePdf } from '../services/storageProvider.js'
+import { getPreviewAccess, remove, upload } from '../services/storageProvider.js'
 import { validateAcademicHierarchy } from '../utils/academicValidation.js'
-
-const storageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../storage')
 
 export async function uploadResource(req, res) {
   // University email verification is strictly required before uploading study materials
@@ -40,7 +35,11 @@ export async function uploadResource(req, res) {
     throw new HttpError(409, 'This resource already exists')
   }
 
-  const file = await storePdf(req.file)
+  const file = await upload(req.file, {
+    provider: metadata.storageProvider,
+    user: req.user,
+  })
+  delete metadata.storageProvider
   let resource
   try {
     resource = await Resource.create({
@@ -50,13 +49,12 @@ export async function uploadResource(req, res) {
       slug: `${slugify(metadata.title)}-${Date.now()}`,
       file,
     })
-  } catch (error) {
-    if (env.STORAGE_PROVIDER !== 's3' && file?.storageKey) {
-      const other = await Resource.exists({ 'file.sha256': file.sha256 })
-      if (!other) {
-        await fs.unlink(path.resolve(storageRoot, file.storageKey)).catch(() => {})
-      }
+    if (file.provider !== 'local') {
+      resource.file.url = getPreviewAccess(resource._id)
+      await resource.save()
     }
+  } catch (error) {
+    await remove({ file }).catch(() => {})
     throw error
   }
 

@@ -12,6 +12,11 @@ async function request(path, options = {}, accessToken = '') {
 }
 
 export const api = {
+  getResourceFileUrl: (url) => {
+    if (!url) return ''
+    if (/^https?:\/\//i.test(url)) return url
+    return `${API_URL}${url.startsWith('/api') ? url.slice(4) : url}`
+  },
   // Public Resource endpoints
   listResources: (query = '') => request(`/resources${query}`),
   getResource: (id) => request(`/resources/${id}`),

@@ -1,6 +1,4 @@
-import fs from 'node:fs/promises'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { pipeline } from 'node:stream/promises'
 import mongoose from 'mongoose'
 import { Resource } from '../models/Resource.js'
 import { Download } from '../models/Download.js'
@@ -14,11 +12,12 @@ import { slugify } from '../utils/slug.js'
 import { validateAcademicHierarchy } from '../utils/academicValidation.js'
 import { sendAdminReplyEmail } from '../services/mailer.js'
 import { logger } from '../utils/logger.js'
+import { exists, getPreviewAccess, getReadStream } from '../services/storageProvider.js'
 
 import { Program, Branch, Subject } from '../models/Academic.js'
 
 const publicResourceQuery = { universityId: env.UNIVERSITY_ID, status: 'APPROVED' }
-const publicResourceFields = '-file.storageKey -file.sha256 -reviewedBy -rejectionReason'
+const publicResourceFields = '-file.storageKey -file.sha256 -file.providerFileId -file.bucket -file.folderId -reviewedBy -rejectionReason'
 
 export async function listResources(req, res) {
   const { q, programId, branchId, semesterId, subjectId, resourceType, examType, academicYear } = req.query
@@ -117,19 +116,30 @@ export async function downloadResource(req, res) {
   const resource = await Resource.findOne({ ...publicResourceQuery, _id: req.params.id })
   if (!resource) throw new HttpError(404, 'Resource not found')
 
-  if (env.STORAGE_PROVIDER !== 's3' && resource.file?.storageKey) {
-    const storagePath = path.resolve(
-      path.dirname(fileURLToPath(import.meta.url)),
-      '../../storage',
-      resource.file.storageKey,
-    )
-    const exists = await fs.access(storagePath).then(() => true).catch(() => false)
-    if (!exists) throw new HttpError(404, 'Resource file is not available')
-  }
+  if (!await exists(resource)) throw new HttpError(404, 'Resource file is not available')
 
   await Download.create({ universityId: env.UNIVERSITY_ID, resourceId: resource._id, userId: req.user?._id || null })
   await Resource.updateOne({ _id: resource._id }, { $inc: { downloadCount: 1 } })
-  return successResponse(res, { url: resource.file.url, fileName: resource.file.fileName }, 'Download recorded')
+  const downloadUrl = resource.file.provider && resource.file.provider !== 'local'
+    ? getPreviewAccess(resource._id)
+    : resource.file.url || getPreviewAccess(resource._id)
+  return successResponse(res, { url: downloadUrl, fileName: resource.file.fileName }, 'Download recorded')
+}
+
+export async function serveResourceFile(req, res) {
+  if (!mongoose.isValidObjectId(req.params.id)) throw new HttpError(404, 'Resource not found')
+  const resource = await Resource.findOne({ _id: req.params.id, universityId: env.UNIVERSITY_ID })
+  if (!resource) throw new HttpError(404, 'Resource not found')
+
+  const canAccess = resource.status === 'APPROVED' ||
+    ['ADMIN', 'MODERATOR'].includes(req.user?.role) ||
+    resource.contributorId?.toString() === req.user?._id?.toString()
+  if (!canAccess) throw new HttpError(404, 'Resource not found')
+  if (!await exists(resource)) throw new HttpError(404, 'Resource file is not available')
+
+  res.setHeader('Content-Type', resource.file.mimeType || 'application/pdf')
+  res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(resource.file.fileName)}"`)
+  await pipeline(await getReadStream(resource), res)
 }
 
 export async function pendingResources(req, res) { return successResponse(res, await Resource.find({ universityId: env.UNIVERSITY_ID, status: 'PENDING_REVIEW' }).populate('contributorId', 'name email').sort({ createdAt: 1 })) }
