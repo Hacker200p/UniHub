@@ -12,7 +12,8 @@ import { slugify } from '../utils/slug.js'
 import { validateAcademicHierarchy } from '../utils/academicValidation.js'
 import { sendAdminReplyEmail } from '../services/mailer.js'
 import { logger } from '../utils/logger.js'
-import { exists, getPreviewAccess, getReadStream } from '../services/storageProvider.js'
+import { exists, getPreviewAccess, getReadStream, remove } from '../services/storageProvider.js'
+import { approveWithTransfer } from '../services/retentionService.js'
 
 import { Program, Branch, Subject } from '../models/Academic.js'
 
@@ -143,8 +144,46 @@ export async function serveResourceFile(req, res) {
 }
 
 export async function pendingResources(req, res) { return successResponse(res, await Resource.find({ universityId: env.UNIVERSITY_ID, status: 'PENDING_REVIEW' }).populate('contributorId', 'name email').sort({ createdAt: 1 })) }
-export async function approveResource(req, res) { const resource = await Resource.findOneAndUpdate({ _id: req.params.id, universityId: env.UNIVERSITY_ID, status: 'PENDING_REVIEW' }, { status: 'APPROVED', verified: true, reviewedBy: req.user._id, reviewedAt: new Date(), rejectionReason: '' }, { new: true }); if (!resource) throw new HttpError(404, 'Pending resource not found'); await Promise.all([Notification.create({ universityId: env.UNIVERSITY_ID, userId: resource.contributorId, type: 'UPLOAD_APPROVED', title: 'Resource approved', message: `${resource.title} is now available in the community library.`, resourceId: resource._id }), recordAudit({ actorId: req.user._id, action: 'RESOURCE_APPROVED', entityType: 'Resource', entityId: resource._id })]); return successResponse(res, resource, 'Resource approved') }
-export async function rejectResource(req, res) { const resource = await Resource.findOneAndUpdate({ _id: req.params.id, universityId: env.UNIVERSITY_ID, status: 'PENDING_REVIEW' }, { status: 'REJECTED', verified: false, rejectionReason: req.body.reason, reviewedBy: req.user._id, reviewedAt: new Date() }, { new: true }); if (!resource) throw new HttpError(404, 'Pending resource not found'); await Promise.all([Notification.create({ universityId: env.UNIVERSITY_ID, userId: resource.contributorId, type: 'UPLOAD_REJECTED', title: 'Resource needs changes', message: `${resource.title} was not approved: ${req.body.reason}`, resourceId: resource._id }), recordAudit({ actorId: req.user._id, action: 'RESOURCE_REJECTED', entityType: 'Resource', entityId: resource._id, reason: req.body.reason })]); return successResponse(res, resource, 'Resource rejected') }
+export async function approveResource(req, res) {
+  let resource = await Resource.findOne({ _id: req.params.id, universityId: env.UNIVERSITY_ID, status: 'PENDING_REVIEW' })
+  if (!resource) throw new HttpError(404, 'Pending resource not found')
+  resource = await approveWithTransfer(resource)
+  resource = await Resource.findOneAndUpdate(
+    { _id: resource._id, universityId: env.UNIVERSITY_ID, status: 'PENDING_REVIEW', 'transfer.state': { $ne: 'IN_PROGRESS' } },
+    { status: 'APPROVED', verified: true, reviewedBy: req.user._id, reviewedAt: new Date(), rejectionReason: '', 'retention.cleanupState': 'DISABLED' },
+    { new: true },
+  )
+  if (!resource) throw new HttpError(409, 'Resource changed during approval; please retry')
+  await Promise.all([
+    Notification.create({ universityId: env.UNIVERSITY_ID, userId: resource.contributorId, type: 'UPLOAD_APPROVED', title: 'Resource approved', message: `${resource.title} is now available in the community library.`, resourceId: resource._id }),
+    recordAudit({ actorId: req.user._id, action: 'RESOURCE_APPROVED', entityType: 'Resource', entityId: resource._id }),
+  ])
+  return successResponse(res, resource, 'Resource approved')
+}
+
+export async function rejectResource(req, res) {
+  const resource = await Resource.findOneAndUpdate(
+    { _id: req.params.id, universityId: env.UNIVERSITY_ID, status: 'PENDING_REVIEW' },
+    { status: 'REJECTED', verified: false, rejectionReason: req.body.reason, reviewedBy: req.user._id, reviewedAt: new Date(), 'retention.cleanupState': 'IN_PROGRESS' },
+    { new: true },
+  )
+  if (!resource) throw new HttpError(404, 'Pending resource not found')
+  let cleanupError = ''
+  if (['s3', 'local'].includes(resource.file.provider)) {
+    try {
+      await remove(resource)
+      await Resource.updateOne({ _id: resource._id }, { $set: { 'file.status': 'DELETED', 'file.deletedAt': new Date(), 'retention.cleanupState': 'COMPLETED' } })
+    } catch (error) {
+      cleanupError = error.message
+      await Resource.updateOne({ _id: resource._id }, { $set: { 'retention.cleanupState': 'FAILED', 'retention.cleanupError': cleanupError } })
+    }
+  }
+  await Promise.all([
+    Notification.create({ universityId: env.UNIVERSITY_ID, userId: resource.contributorId, type: 'UPLOAD_REJECTED', title: 'Resource rejected', message: `${resource.title} was not approved: ${req.body.reason}`, resourceId: resource._id }),
+    recordAudit({ actorId: req.user._id, action: 'RESOURCE_REJECTED', entityType: 'Resource', entityId: resource._id, reason: req.body.reason, metadata: cleanupError ? { cleanupError } : {} }),
+  ])
+  return successResponse(res, resource, cleanupError ? 'Resource rejected; staging cleanup will be retried' : 'Resource rejected')
+}
 export async function requestChangesResource(req, res) {
   // Allow requesting changes on any resource status — not just PENDING_REVIEW
   // This enables admins to request fixes for already-approved resources too.

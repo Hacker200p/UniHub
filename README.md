@@ -146,6 +146,12 @@ Each upload is assigned to one provider and stores its provider-specific identif
 
 Set `STORAGE_UPLOAD_POLICY=admin-selected` only when administrators or moderators should be allowed to choose among enabled providers. Otherwise uploads use `STORAGE_DEFAULT_PROVIDER`. Do not place provider credentials in frontend configuration or commit them.
 
+### Staging retention and moderation transfer
+
+Pending uploads can be kept in private S3-compatible staging storage (Cloudflare R2 or Backblaze B2) by setting `STORAGE_STAGING_PROVIDERS=r2,b2` (or the legacy single-provider setting). Enabled providers are selected in deterministic round-robin order and each resource records its actual provider and object identifier. The application records the logical content key separately from the provider object identifier, so existing local records remain readable. When retention is enabled, pending uploads use a 120-day UTC deadline by default and receive warnings at days 90, 113, and 119. Rejected staging objects are cleaned up with retryable state, while approved staging objects are transferred to the private Google Drive Resources folder and verified before approval.
+
+Automatic cleanup is deliberately disabled until the staging provider is verified. Before enabling it, configure each selected R2/B2 endpoint, bucket and credential set, add the selected providers to `STORAGE_ENABLED_PROVIDERS`, set `STORAGE_STAGING_PROVIDERS=r2,b2` (or one provider), verify private endpoint permissions and failure recovery with live integration tests, configure Google Drive OAuth and the destination folder, and only then set `RETENTION_ENABLED=true`. Use `RETENTION_JOB_INTERVAL_MS` to control the UTC cleanup poll interval. Never expose provider identifiers or direct object URLs to clients.
+
 Before production:
 - Rotate all database, SMTP, OAuth, and JWT secrets.
 - Use a minimum 32-character random `JWT_SECRET`.

@@ -12,6 +12,8 @@ import {
   updateAdminResource,
   updateUserRole,
   updateUserStatus,
+  scheduledForDeletion,
+  extendResourceRetention,
 } from '../controllers/adminController.js'
 import { requireAuth, requireRoles } from '../middleware/auth.js'
 import { listAuditLogs } from '../controllers/auditController.js'
@@ -29,6 +31,8 @@ adminRouter.delete('/resources/:id', deleteAdminResource)
 adminRouter.get('/contributors', listAdminContributors)
 adminRouter.get('/developers', listAdminDevelopers)
 adminRouter.get('/audit', listAuditLogs)
+adminRouter.get('/resources/scheduled-for-deletion', scheduledForDeletion)
+adminRouter.patch('/resources/:id/retention', extendResourceRetention)
 
 // Role-management routes restricted strictly to ADMIN only
 adminRouter.get('/users', requireRoles('ADMIN'), listAdminUsers)

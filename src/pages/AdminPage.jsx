@@ -74,7 +74,64 @@ function Modal({ title, onClose, children }) {
 }
 
 // 1. DASHBOARD VIEW
-function AdminDashboardView({ overview, onNavigateTab, currentUser }) {
+function ScheduledDeletionPanel({ token }) {
+  const [items, setItems] = useState([])
+  const [error, setError] = useState('')
+  const [busyId, setBusyId] = useState('')
+
+  const load = useCallback(() => {
+    api.listScheduledForDeletion(token).then(setItems).catch((err) => setError(err.message))
+  }, [token])
+
+  useEffect(() => { load() }, [load])
+
+  const extend = async (item) => {
+    if (!window.confirm(`Extend retention for "${item.title}" by 30 days?`)) return
+    setBusyId(item._id)
+    try {
+      await api.extendResourceRetention(token, item._id, 30, 'Extended from Scheduled for Deletion dashboard')
+      await load()
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setBusyId('')
+    }
+  }
+
+  return (
+    <div className="admin-card">
+      <div className="admin-card-header">
+        <h3>Scheduled for Deletion</h3>
+        <span className="muted">{items.length} pending staged files</span>
+      </div>
+      {error && <p className="form-error">{error}</p>}
+      {items.length === 0 ? <p className="empty-state">No staged resources are currently scheduled for deletion.</p> : (
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead><tr><th>Resource</th><th>Uploader</th><th>Deadline</th><th>Provider / Size</th><th>Action</th></tr></thead>
+            <tbody>
+              {items.map((item) => {
+                const remaining = new Date(item.retention?.deadline).getTime() - Date.now()
+                const urgent = remaining < 7 * 24 * 60 * 60 * 1000
+                return (
+                  <tr key={item._id} className={urgent ? 'status-row-warning' : ''}>
+                    <td><strong>{item.title}</strong><br /><span className="muted">{item.resourceType} · {item.status}</span></td>
+                    <td>{item.contributorId?.name || 'Unknown'}<br /><span className="muted">{item.contributorId?.email || ''}</span></td>
+                    <td>{formatDateTime(item.retention?.deadline)}<br /><span className={urgent ? 'text-red' : 'muted'}>{remaining <= 0 ? 'Overdue' : `${Math.ceil(remaining / (24 * 60 * 60 * 1000))} days remaining`}</span></td>
+                    <td>{item.file?.provider || 'unknown'}<br /><span className="muted">{item.file?.sizeBytes || 0} bytes</span>{(item.retention?.cleanupError || item.transfer?.error || item.retention?.notificationFailures?.length) && <><br /><span className="text-red">Failure recorded</span></>}</td>
+                    <td><button className="action-btn approve-btn" disabled={busyId === item._id} onClick={() => extend(item)}>+30 days</button></td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function AdminDashboardView({ overview, onNavigateTab, currentUser, token }) {
   const stats = overview?.statistics || {}
   const activity = overview?.recentActivity || {}
 
@@ -189,6 +246,7 @@ function AdminDashboardView({ overview, onNavigateTab, currentUser }) {
             <p className="empty-state">No open suggestions.</p>
           )}
         </div>
+        <ScheduledDeletionPanel token={token} />
       </div>
     </div>
   )
@@ -2913,7 +2971,7 @@ export default function AdminPage({ currentPath = '/admin', onNavigate }) {
         {error && <p className="form-error">{error}</p>}
 
         {activeTab === 'dashboard' && (
-          <AdminDashboardView overview={overview} onNavigateTab={navigateTab} currentUser={user} />
+          <AdminDashboardView overview={overview} onNavigateTab={navigateTab} currentUser={user} token={accessToken} />
         )}
         {activeTab === 'uploads' && (
           <PendingReviewsView

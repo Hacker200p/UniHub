@@ -149,6 +149,9 @@ export const api = {
   getAdminQueue: (token) => request('/admin/queue', {}, token),
   getAdminAnalytics: (token) => request('/admin/analytics', {}, token),
   listAdminAuditLogs: (token) => request('/admin/audit', {}, token),
+  listScheduledForDeletion: (token) => request('/admin/resources/scheduled-for-deletion', {}, token),
+  extendResourceRetention: (token, id, days = 30, reason = '') =>
+    request(`/admin/resources/${id}/retention`, { method: 'PATCH', body: JSON.stringify({ days, reason }) }, token),
   listAdminContributors: (token) => request('/admin/contributors', {}, token),
 
   // Admin Resource Management

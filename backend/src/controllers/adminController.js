@@ -9,6 +9,8 @@ import { successResponse } from '../utils/apiResponse.js'
 import { HttpError } from '../utils/httpError.js'
 import { recordAudit } from '../utils/audit.js'
 import { remove } from '../services/storageProvider.js'
+import { retentionDeadline } from '../services/retentionService.js'
+import { Notification } from '../models/Notification.js'
 
 export async function overview(req, res) {
   const universityId = env.UNIVERSITY_ID
@@ -200,6 +202,55 @@ export async function deleteAdminResource(req, res) {
   })
 
   return successResponse(res, null, 'Resource deleted successfully')
+}
+
+export async function scheduledForDeletion(req, res) {
+  const resources = await Resource.find({
+    universityId: env.UNIVERSITY_ID,
+    status: 'PENDING_REVIEW',
+    'retention.deadline': { $exists: true },
+  })
+    .select('title resourceType status createdAt file.provider file.sizeBytes retention transfer contributorId')
+    .populate('contributorId', 'name email')
+    .sort({ 'retention.deadline': 1 })
+    .limit(200)
+    .lean()
+  return successResponse(res, resources)
+}
+
+export async function extendResourceRetention(req, res) {
+  const days = Number(req.body?.days || 30)
+  if (!Number.isInteger(days) || days < 1 || days > 365) throw new HttpError(400, 'Extension must be between 1 and 365 days')
+  const resource = await Resource.findOne({ _id: req.params.id, universityId: env.UNIVERSITY_ID, status: 'PENDING_REVIEW' })
+  if (!resource) throw new HttpError(404, 'Pending resource not found')
+  const base = resource.retention?.deadline || retentionDeadline(resource.retention?.originalUploadedAt || resource.file.storedAt || resource.createdAt)
+  const deadline = new Date(Math.max(Date.now(), new Date(base).getTime()) + days * 24 * 60 * 60 * 1000)
+  const updated = await Resource.findOneAndUpdate(
+    { _id: resource._id, status: 'PENDING_REVIEW' },
+    {
+      $set: {
+        'retention.deadline': deadline,
+        'retention.extendedAt': new Date(),
+        'retention.extendedBy': req.user._id,
+        'retention.extensionReason': String(req.body?.reason || 'Administrative retention extension').slice(0, 500),
+        'retention.cleanupState': 'ELIGIBLE',
+        'retention.cleanupError': '',
+      },
+    },
+    { new: true },
+  )
+  await Promise.all([
+    Notification.create({
+      universityId: env.UNIVERSITY_ID,
+      userId: updated.contributorId,
+      type: 'RETENTION_DEADLINE_CHANGED',
+      title: 'Resource review deadline extended',
+      message: `${updated.title} will remain available for review until ${deadline.toISOString().slice(0, 10)}.`,
+      resourceId: updated._id,
+    }),
+    recordAudit({ actorId: req.user._id, action: 'RESOURCE_RETENTION_EXTENDED', entityType: 'Resource', entityId: updated._id, reason: req.body?.reason || 'Administrative retention extension', metadata: { days, deadline } }),
+  ])
+  return successResponse(res, updated, 'Retention deadline extended')
 }
 
 export async function listAdminUsers(req, res) {

@@ -10,8 +10,16 @@ import {
 import { env, storageConfig } from '../config/env.js'
 import * as localStorage from './localStorage.js'
 
-const PROVIDERS = new Set(['local', 's3', 'google-drive'])
+const PROVIDERS = new Set(['local', 's3', 'r2', 'b2', 'google-drive'])
 let googleFolderId = null
+let googleFolderPromise = null
+let stagingRoundRobinIndex = 0
+
+function configuredStagingProviders() {
+  return storageConfig.stagingProviders.length
+    ? storageConfig.stagingProviders
+    : (storageConfig.stagingProvider ? [storageConfig.stagingProvider] : [])
+}
 
 function getProviderName(resourceOrName) {
   const name = typeof resourceOrName === 'string'
@@ -22,6 +30,10 @@ function getProviderName(resourceOrName) {
 
 function resourceFileId(resource) {
   return resource?.file?.providerFileId || resource?.file?.storageKey
+}
+
+export function resourceProvider(resource) {
+  return getProviderName(resource)
 }
 
 function toNodeStream(body) {
@@ -65,17 +77,50 @@ async function googleRequest(url, options = {}) {
 async function ensureGoogleFolder() {
   if (env.GOOGLE_DRIVE_FOLDER_ID) return env.GOOGLE_DRIVE_FOLDER_ID
   if (googleFolderId) return googleFolderId
-  const response = await googleRequest('https://www.googleapis.com/drive/v3/files', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      name: 'UniHub Resources',
-      mimeType: 'application/vnd.google-apps.folder',
-    }),
-  })
-  const body = await response.json()
-  googleFolderId = body.id
-  return googleFolderId
+  if (!googleFolderPromise) {
+    googleFolderPromise = (async () => {
+      const query = new URLSearchParams({
+        q: "name = 'UniHub Resources' and mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        spaces: 'drive',
+        fields: 'files(id,name,mimeType)',
+        pageSize: '1000',
+      })
+      const existingResponse = await googleRequest(`https://www.googleapis.com/drive/v3/files?${query.toString()}`)
+      const existing = await existingResponse.json()
+      const folders = Array.isArray(existing.files) ? existing.files : []
+      if (folders.length > 1) {
+        const error = new Error('Multiple accessible Google Drive folders named "UniHub Resources" were found. Select a canonical folder and configure GOOGLE_DRIVE_FOLDER_ID.')
+        error.code = 'GOOGLE_DRIVE_FOLDER_AMBIGUOUS'
+        throw error
+      }
+      if (folders.length === 1) {
+        if (!folders[0].id) {
+          throw new Error('The existing UniHub Resources folder could not be identified. Configure GOOGLE_DRIVE_FOLDER_ID with the canonical folder ID.')
+        }
+        googleFolderId = folders[0].id
+        return googleFolderId
+      }
+
+      const response = await googleRequest('https://www.googleapis.com/drive/v3/files', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'UniHub Resources',
+          mimeType: 'application/vnd.google-apps.folder',
+        }),
+      })
+      const body = await response.json()
+      if (!body.id) {
+        throw new Error('Google Drive folder creation returned no folder ID')
+      }
+      googleFolderId = body.id
+      return googleFolderId
+    })().catch((error) => {
+      googleFolderPromise = null
+      throw error
+    })
+  }
+  return googleFolderPromise
 }
 
 async function uploadGoogleDrive(file) {
@@ -112,32 +157,70 @@ async function uploadGoogleDrive(file) {
     status: 'READY',
     storedAt: new Date(),
   }
+
 }
 
-function getS3Client() {
-  return new S3Client({
-    region: env.STORAGE_REGION,
+const s3ProviderConfig = {
+  s3: {
     endpoint: env.STORAGE_ENDPOINT,
-    forcePathStyle: Boolean(env.STORAGE_ENDPOINT),
-    credentials: { accessKeyId: env.STORAGE_ACCESS_KEY, secretAccessKey: env.STORAGE_SECRET_KEY },
+    bucket: env.STORAGE_BUCKET,
+    region: env.STORAGE_REGION,
+    accessKeyId: env.STORAGE_ACCESS_KEY,
+    secretAccessKey: env.STORAGE_SECRET_KEY,
+  },
+  r2: {
+    endpoint: env.R2_ENDPOINT,
+    bucket: env.R2_BUCKET,
+    region: env.R2_REGION,
+    accessKeyId: env.R2_ACCESS_KEY_ID,
+    secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+  },
+  b2: {
+    endpoint: env.B2_ENDPOINT,
+    bucket: env.B2_BUCKET,
+    region: env.B2_REGION,
+    accessKeyId: env.B2_ACCESS_KEY_ID,
+    secretAccessKey: env.B2_SECRET_ACCESS_KEY,
+  },
+}
+
+function getS3Client(provider = 's3') {
+  const config = s3ProviderConfig[provider] || s3ProviderConfig.s3
+  return new S3Client({
+    region: config.region,
+    endpoint: config.endpoint,
+    forcePathStyle: Boolean(config.endpoint),
+    credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
   })
 }
 
-async function uploadS3(file) {
+async function uploadS3(file, provider = 's3') {
   const sha256 = crypto.createHash('sha256').update(file.buffer).digest('hex')
   const key = `resources/${sha256}.pdf`
-  await getS3Client().send(new PutObjectCommand({
-    Bucket: env.STORAGE_BUCKET,
-    Key: key,
-    Body: file.buffer,
-    ContentType: file.mimetype,
-  }))
+  const config = s3ProviderConfig[provider]
+  const client = getS3Client(provider)
+  try {
+    await client.send(new PutObjectCommand({
+      Bucket: config.bucket,
+      Key: key,
+      Body: file.buffer,
+      ContentType: file.mimetype,
+    }))
+  } catch (error) {
+    try {
+      await client.send(new HeadObjectCommand({ Bucket: config.bucket, Key: key }))
+    } catch (verificationError) {
+      error.uploadVerifiedAbsent = verificationError.name === 'NotFound' || verificationError.$metadata?.httpStatusCode === 404
+      error.uploadVerificationError = verificationError.message
+    }
+    throw error
+  }
   return {
-    provider: 's3',
+    provider,
     url: `/api/resources/__RESOURCE_ID__/file`,
     storageKey: `${sha256}.pdf`,
     providerFileId: key,
-    bucket: env.STORAGE_BUCKET,
+    bucket: config.bucket,
     fileName: file.originalname,
     mimeType: file.mimetype,
     sizeBytes: file.size,
@@ -145,6 +228,12 @@ async function uploadS3(file) {
     status: 'READY',
     storedAt: new Date(),
   }
+}
+
+function providerConfig(provider) {
+  const config = s3ProviderConfig[provider]
+  if (!config) throw new Error(`Unsupported S3-compatible provider: ${provider}`)
+  return config
 }
 
 const adapters = {
@@ -156,17 +245,43 @@ const adapters = {
     delete: (resource) => localStorage.deleteFile(resourceFileId(resource)),
   },
   s3: {
-    upload: uploadS3,
-    getReadStream: async (resource) => toNodeStream((await getS3Client().send(new GetObjectCommand({ Bucket: resource.file.bucket || env.STORAGE_BUCKET, Key: resourceFileId(resource) }))).Body),
+    upload: (file) => uploadS3(file, 's3'),
+    getReadStream: async (resource) => toNodeStream((await getS3Client('s3').send(new GetObjectCommand({ Bucket: resource.file.bucket || providerConfig('s3').bucket, Key: resourceFileId(resource) }))).Body),
     getMetadata: async (resource) => {
-      const result = await getS3Client().send(new HeadObjectCommand({ Bucket: resource.file.bucket || env.STORAGE_BUCKET, Key: resourceFileId(resource) }))
+      const result = await getS3Client('s3').send(new HeadObjectCommand({ Bucket: resource.file.bucket || providerConfig('s3').bucket, Key: resourceFileId(resource) }))
       return { sizeBytes: result.ContentLength, mimeType: result.ContentType, lastModified: result.LastModified }
     },
-    exists: async (resource) => getS3Client().send(new HeadObjectCommand({ Bucket: resource.file.bucket || env.STORAGE_BUCKET, Key: resourceFileId(resource) })).then(() => true).catch((error) => {
+    exists: async (resource) => getS3Client('s3').send(new HeadObjectCommand({ Bucket: resource.file.bucket || providerConfig('s3').bucket, Key: resourceFileId(resource) })).then(() => true).catch((error) => {
       if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) return false
       throw error
     }),
-    delete: (resource) => getS3Client().send(new DeleteObjectCommand({ Bucket: resource.file.bucket || env.STORAGE_BUCKET, Key: resourceFileId(resource) })),
+    delete: (resource) => getS3Client('s3').send(new DeleteObjectCommand({ Bucket: resource.file.bucket || providerConfig('s3').bucket, Key: resourceFileId(resource) })),
+  },
+  r2: {
+    upload: (file) => uploadS3(file, 'r2'),
+    getReadStream: async (resource) => toNodeStream((await getS3Client('r2').send(new GetObjectCommand({ Bucket: resource.file.bucket || providerConfig('r2').bucket, Key: resourceFileId(resource) }))).Body),
+    getMetadata: async (resource) => {
+      const result = await getS3Client('r2').send(new HeadObjectCommand({ Bucket: resource.file.bucket || providerConfig('r2').bucket, Key: resourceFileId(resource) }))
+      return { sizeBytes: result.ContentLength, mimeType: result.ContentType, lastModified: result.LastModified }
+    },
+    exists: async (resource) => getS3Client('r2').send(new HeadObjectCommand({ Bucket: resource.file.bucket || providerConfig('r2').bucket, Key: resourceFileId(resource) })).then(() => true).catch((error) => {
+      if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) return false
+      throw error
+    }),
+    delete: (resource) => getS3Client('r2').send(new DeleteObjectCommand({ Bucket: resource.file.bucket || providerConfig('r2').bucket, Key: resourceFileId(resource) })),
+  },
+  b2: {
+    upload: (file) => uploadS3(file, 'b2'),
+    getReadStream: async (resource) => toNodeStream((await getS3Client('b2').send(new GetObjectCommand({ Bucket: resource.file.bucket || providerConfig('b2').bucket, Key: resourceFileId(resource) }))).Body),
+    getMetadata: async (resource) => {
+      const result = await getS3Client('b2').send(new HeadObjectCommand({ Bucket: resource.file.bucket || providerConfig('b2').bucket, Key: resourceFileId(resource) }))
+      return { sizeBytes: result.ContentLength, mimeType: result.ContentType, lastModified: result.LastModified }
+    },
+    exists: async (resource) => getS3Client('b2').send(new HeadObjectCommand({ Bucket: resource.file.bucket || providerConfig('b2').bucket, Key: resourceFileId(resource) })).then(() => true).catch((error) => {
+      if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) return false
+      throw error
+    }),
+    delete: (resource) => getS3Client('b2').send(new DeleteObjectCommand({ Bucket: resource.file.bucket || providerConfig('b2').bucket, Key: resourceFileId(resource) })),
   },
   'google-drive': {
     upload: uploadGoogleDrive,
@@ -184,6 +299,13 @@ const adapters = {
   },
 }
 
+async function readBuffer(resource) {
+  const stream = await adapters[getProviderName(resource)].getReadStream(resource)
+  const chunks = []
+  for await (const chunk of stream) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  return Buffer.concat(chunks)
+}
+
 export function enabledStorageProviders() {
   return storageConfig.enabledProviders
 }
@@ -193,13 +315,53 @@ export function selectStorageProvider(requestedProvider, user) {
     if (!storageConfig.enabledProviders.includes(requestedProvider)) throw new Error('Requested storage provider is not enabled')
     return requestedProvider
   }
+  if (configuredStagingProviders().length) {
+    const providers = configuredStagingProviders().filter((provider) => storageConfig.enabledProviders.includes(provider))
+    if (!providers.length) throw new Error('No configured staging provider is enabled')
+    const selected = providers[stagingRoundRobinIndex % providers.length]
+    stagingRoundRobinIndex += 1
+    return selected
+  }
   return storageConfig.defaultProvider
 }
 
 export async function upload(file, { provider, user } = {}) {
   const selected = selectStorageProvider(provider, user)
   if (!storageConfig.enabledProviders.includes(selected)) throw new Error('Selected storage provider is not enabled')
-  return adapters[selected].upload(file)
+  const stagingProviders = configuredStagingProviders().filter((name) => storageConfig.enabledProviders.includes(name))
+  const candidates = stagingProviders.includes(selected)
+    ? [selected, ...stagingProviders.filter((name) => name !== selected)]
+    : [selected]
+  let lastError
+  for (const candidate of candidates) {
+    try {
+      return await adapters[candidate].upload(file)
+    } catch (error) {
+      lastError = error
+      if (error.uploadVerifiedAbsent !== true || candidates.length === 1) throw error
+    }
+  }
+  throw lastError
+}
+
+export async function transferToGoogleDrive(resource) {
+  const buffer = await readBuffer(resource)
+  const file = await uploadGoogleDrive({
+    buffer,
+    mimetype: resource.file.mimeType || 'application/pdf',
+    originalname: resource.file.fileName,
+    size: buffer.length,
+  })
+  const metadata = await adapters['google-drive'].getMetadata({ file })
+  if (metadata.sizeBytes !== buffer.length) {
+    await adapters['google-drive'].delete({ file })
+    throw new Error('Permanent storage verification failed: file size mismatch')
+  }
+  return file
+}
+
+export function isStagingProvider(provider) {
+  return configuredStagingProviders().includes(provider)
 }
 
 export async function getReadStream(resource) {

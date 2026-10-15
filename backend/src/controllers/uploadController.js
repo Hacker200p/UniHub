@@ -4,7 +4,8 @@ import { env } from '../config/env.js'
 import { successResponse } from '../utils/apiResponse.js'
 import { HttpError } from '../utils/httpError.js'
 import { slugify } from '../utils/slug.js'
-import { getPreviewAccess, remove, upload } from '../services/storageProvider.js'
+import { getPreviewAccess, isStagingProvider, remove, upload } from '../services/storageProvider.js'
+import { retentionDeadline } from '../services/retentionService.js'
 import { validateAcademicHierarchy } from '../utils/academicValidation.js'
 
 export async function uploadResource(req, res) {
@@ -48,6 +49,12 @@ export async function uploadResource(req, res) {
       contributorId: req.user._id,
       slug: `${slugify(metadata.title)}-${Date.now()}`,
       file,
+      retention: isStagingProvider(file.provider) ? {
+        originalUploadedAt: file.storedAt || new Date(),
+        deadline: retentionDeadline(file.storedAt || new Date()),
+        cleanupState: 'ELIGIBLE',
+      } : undefined,
+      transfer: isStagingProvider(file.provider) ? { state: 'NOT_REQUIRED' } : undefined,
     })
     if (file.provider !== 'local') {
       resource.file.url = getPreviewAccess(resource._id)
