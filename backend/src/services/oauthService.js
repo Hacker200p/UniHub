@@ -2,6 +2,7 @@ import crypto from 'node:crypto'
 import jwt from 'jsonwebtoken'
 import { env } from '../config/env.js'
 import { HttpError } from '../utils/httpError.js'
+import { OAuthHandoffCode } from '../models/OAuthHandoffCode.js'
 
 export function getEnabledProviders() {
   return {
@@ -276,32 +277,38 @@ export async function exchangeCodeForIdentity(provider, code, codeVerifier) {
   }
 }
 
-/**
- * Single-use ticket generation for secure frontend authentication handoff.
- */
-export function createOAuthHandoff(user) {
-  return jwt.sign(
-    {
-      sub: String(user._id),
-      universityId: user.universityId,
-    },
-    env.JWT_SECRET,
-    {
-      expiresIn: '5m',
-      issuer: 'university-study-hub',
-      audience: 'oauth-handoff',
-    },
-  )
+function hashOAuthHandoffCode(code) {
+  return crypto.createHash('sha256').update(code).digest('hex')
 }
 
-export function verifyOAuthHandoff(code) {
-  try {
-    return jwt.verify(code, env.JWT_SECRET, {
-      issuer: 'university-study-hub',
-      audience: 'oauth-handoff',
-      clockTolerance: 15,
-    })
-  } catch {
-    throw new HttpError(401, 'Invalid or expired authentication handoff ticket')
+/**
+ * Creates a short-lived, single-use code for the frontend authentication handoff.
+ */
+export async function createOAuthHandoff(user) {
+  const code = crypto.randomBytes(32).toString('base64url')
+  await OAuthHandoffCode.create({
+    codeHash: hashOAuthHandoffCode(code),
+    universityId: user.universityId,
+    userId: user._id,
+    expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+  })
+  return code
+}
+
+export async function consumeOAuthHandoff(code) {
+  const handoff = await OAuthHandoffCode.findOneAndUpdate(
+    {
+      codeHash: hashOAuthHandoffCode(code),
+      consumedAt: null,
+      expiresAt: { $gt: new Date() },
+    },
+    { $set: { consumedAt: new Date() } },
+    { new: true },
+  )
+
+  if (!handoff) {
+    throw new HttpError(401, 'Invalid or expired authentication handoff code (already used codes are rejected)')
   }
+
+  return handoff
 }

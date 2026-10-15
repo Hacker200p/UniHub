@@ -2,8 +2,6 @@ import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '../context/useAuth.js'
 import { api } from '../services/api.js'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000/api'
-
 function GoogleIcon() {
   return (
     <svg className="provider-icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
@@ -245,10 +243,10 @@ export default function SettingsPage({ activeTab = 'profile', onNavigate }) {
       if (targetUrl) {
         window.location.href = targetUrl
       } else {
-        window.location.href = `${API_URL}/auth/${provider}?intent=link&token=${encodeURIComponent(accessToken)}`
+        setSecurityStatus({ success: '', error: 'Unable to start provider linking. Please try again.', loading: false })
       }
-    } catch {
-      window.location.href = `${API_URL}/auth/${provider}?intent=link&token=${encodeURIComponent(accessToken)}`
+    } catch (err) {
+      setSecurityStatus({ success: '', error: err.message || 'Unable to start provider linking. Please try again.', loading: false })
     }
   }
 

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import request from 'supertest'
 import bcrypt from 'bcryptjs'
 import { app } from '../src/app.js'
@@ -13,7 +13,6 @@ import {
   verifyOAuthState,
   validateUniversityDomain,
   createOAuthHandoff,
-  verifyOAuthHandoff,
 } from '../src/services/oauthService.js'
 
 describe('Social OAuth, Security & Account Management', () => {
@@ -98,18 +97,12 @@ describe('Social OAuth, Security & Account Management', () => {
       expect(() => verifyOAuthState(tampered, 'google')).toThrow()
     })
 
-    it('creates and verifies short-lived OAuth handoff tokens', () => {
+    it('creates a short-lived single-use handoff code', async () => {
       const mockUser = { _id: '507f1f77bcf86cd799439011', universityId: env.UNIVERSITY_ID }
-      const handoffCode = createOAuthHandoff(mockUser)
+      const handoffCode = await createOAuthHandoff(mockUser)
       expect(handoffCode).toBeDefined()
       expect(typeof handoffCode).toBe('string')
-
-      const verified = verifyOAuthHandoff(handoffCode)
-      expect(verified.sub).toBe('507f1f77bcf86cd799439011')
-      expect(verified.universityId).toBe(env.UNIVERSITY_ID)
-
-      // Invalid handoff code throws error
-      expect(() => verifyOAuthHandoff('invalid.handoff.code')).toThrow()
+      expect(handoffCode).not.toContain('.')
     })
 
     it('validates university domain policy accurately', () => {
@@ -179,6 +172,66 @@ describe('Social OAuth, Security & Account Management', () => {
       const res = await request(app).get('/api/auth/google/callback?state=somestate')
       expect(res.status).toBe(302)
       expect(res.headers.location).toContain('/login?error=')
+    })
+
+    it('successful Google callback redirects to the frontend callback route with a one-time code', async () => {
+      const previousClientId = env.GOOGLE_CLIENT_ID
+      const previousClientSecret = env.GOOGLE_CLIENT_SECRET
+      const previousFetch = global.fetch
+      env.GOOGLE_CLIENT_ID = 'test-google-client'
+      env.GOOGLE_CLIENT_SECRET = 'test-google-secret'
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({ access_token: 'provider-access-token' }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            sub: `google_${Date.now()}`,
+            email: `callback_${Date.now()}@test-auth-oauth.edu`,
+            email_verified: true,
+            name: 'Callback User',
+          }),
+        })
+
+      try {
+        const { stateToken } = createOAuthState({ intent: 'login', provider: 'google' })
+        const res = await request(app)
+          .get('/api/auth/google/callback')
+          .query({ code: 'provider-code', state: stateToken })
+
+        expect(res.status).toBe(302)
+        const callbackUrl = new URL(res.headers.location)
+        expect(callbackUrl.pathname).toBe('/auth/callback')
+        expect(callbackUrl.searchParams.get('code')).toBeTruthy()
+        expect(callbackUrl.searchParams.get('code')).not.toContain('.')
+      } finally {
+        env.GOOGLE_CLIENT_ID = previousClientId
+        env.GOOGLE_CLIENT_SECRET = previousClientSecret
+        global.fetch = previousFetch
+      }
+    })
+
+    it('rejects a handoff code after it has been exchanged once', async () => {
+      const user = await User.create({
+        universityId: env.UNIVERSITY_ID,
+        name: 'Handoff User',
+        email: `handoff_${Date.now()}@test-auth-oauth.edu`,
+        role: 'STUDENT',
+      })
+      const handoffCode = await createOAuthHandoff(user)
+
+      const firstExchange = await request(app)
+        .post('/api/auth/oauth/exchange')
+        .send({ code: handoffCode })
+      const secondExchange = await request(app)
+        .post('/api/auth/oauth/exchange')
+        .send({ code: handoffCode })
+
+      expect(firstExchange.status).toBe(200)
+      expect(firstExchange.body.data.accessToken).toBeDefined()
+      expect(secondExchange.status).toBe(401)
     })
   })
 
@@ -537,7 +590,7 @@ describe('Social OAuth, Security & Account Management', () => {
         authProviders: [{ provider: 'google', providerUserId: 'goog_12345', email: 'handoff.student@test-auth-oauth.edu' }],
       })
 
-      const handoffCode = createOAuthHandoff(testUser)
+      const handoffCode = await createOAuthHandoff(testUser)
       const res = await request(app).post('/api/auth/oauth/exchange').send({ code: handoffCode })
 
       expect(res.status).toBe(200)
@@ -548,4 +601,3 @@ describe('Social OAuth, Security & Account Management', () => {
     })
   })
 })
-

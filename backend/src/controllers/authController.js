@@ -21,13 +21,13 @@ import { clearRefreshCookie, getRefreshCookie, setRefreshCookie } from '../utils
 import { recordAudit } from '../utils/audit.js'
 import { logger } from '../utils/logger.js'
 import {
+  consumeOAuthHandoff,
   createOAuthHandoff,
   createOAuthState,
   exchangeCodeForIdentity,
   getAuthorizationUrl,
   getEnabledProviders,
   validateUniversityDomain,
-  verifyOAuthHandoff,
   verifyOAuthState,
 } from '../services/oauthService.js'
 
@@ -686,7 +686,7 @@ export async function handleOAuthCallback(req, res) {
     const rawRefreshToken = await issueNewRefreshSession(user, req)
     setRefreshCookie(res, rawRefreshToken)
 
-    const handoffCode = createOAuthHandoff(user)
+    const handoffCode = await createOAuthHandoff(user)
     return res.redirect(`${env.CLIENT_URL}/auth/callback?code=${encodeURIComponent(handoffCode)}`)
   } catch (err) {
     logger.error('OAuth processing failure', { provider, error: err.message })
@@ -700,45 +700,11 @@ export async function exchangeOAuthCode(req, res) {
   const { code } = req.body
   if (!code) throw new HttpError(400, 'Exchange code is required')
 
-  let decoded
-  try {
-    decoded = verifyOAuthHandoff(code)
-  } catch (err) {
-    // If ticket is expired/stale, check if an active refresh session cookie is present
-    const refreshToken = getRefreshCookie(req)
-    if (refreshToken) {
-      const incomingHash = hashToken(refreshToken)
-      const now = new Date()
-      const activeSession = await RefreshSession.findOne({
-        universityId: env.UNIVERSITY_ID,
-        tokenHash: incomingHash,
-        revokedAt: null,
-        expiresAt: { $gt: now },
-      })
-      if (activeSession) {
-        const sessionUser = await User.findOne({
-          _id: activeSession.userId,
-          universityId: env.UNIVERSITY_ID,
-          isActive: true,
-        })
-        if (sessionUser) {
-          return successResponse(
-            res,
-            {
-              user: sessionUser.toPrivateJSON(),
-              accessToken: createAccessToken(sessionUser),
-            },
-            'Authentication exchange successful via active session',
-          )
-        }
-      }
-    }
-    throw err
-  }
+  const handoff = await consumeOAuthHandoff(code)
 
   const user = await User.findOne({
-    _id: decoded.sub,
-    universityId: decoded.universityId || env.UNIVERSITY_ID,
+    _id: handoff.userId,
+    universityId: handoff.universityId,
     isActive: true,
   })
 
