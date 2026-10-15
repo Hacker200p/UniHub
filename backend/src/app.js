@@ -20,6 +20,7 @@ import { verifyAccessToken } from './utils/tokens.js'
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js'
 
 export const app = express()
+app.set('trust proxy', 1)
 const storagePath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../storage')
 app.disable('x-powered-by')
 app.use(helmet())

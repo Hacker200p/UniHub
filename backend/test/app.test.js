@@ -10,6 +10,17 @@ let app
 beforeAll(async () => { ({ app } = await import('../src/app.js')) })
 
 describe('API foundation', () => {
+  it('trusts the single Render proxy hop before rate limiting runs', async () => {
+    expect(app.get('trust proxy')).toBe(1)
+
+    const response = await (await import('supertest')).default(app)
+      .get('/api/health')
+      .set('X-Forwarded-For', '203.0.113.10')
+
+    expect(response.status).toBe(200)
+    expect(response.body.success).toBe(true)
+  })
+
   it('reports health without a database connection', async () => {
     const response = await (await import('supertest')).default(app).get('/api/health')
     expect(response.status).toBe(200)
